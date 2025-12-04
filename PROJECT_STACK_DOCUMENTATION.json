@@ -1,0 +1,584 @@
+{
+  "project_name": "PFM Tools Stack Documentation",
+  "description": "Complete technical documentation for recreating the project skeleton with same stack, layers, Vue.js framework, and login screen",
+  "version": "1.0",
+  "created_for": "Meta API Campaign Management Tool",
+
+  "technology_stack": {
+    "backend": {
+      "framework": "FastAPI",
+      "python_version": "3.12",
+      "database": {
+        "type": "PostgreSQL",
+        "version": "16",
+        "orm": "SQLAlchemy",
+        "connection_pool": "psycopg2-binary"
+      },
+      "cache_queue": {
+        "type": "Redis",
+        "version": "7",
+        "queue_system": "RQ (Redis Queue)",
+        "scheduler": "RQ-Scheduler"
+      },
+      "authentication": {
+        "method": "JWT",
+        "library": "python-jose[cryptography]",
+        "algorithm": "HS256",
+        "token_expiration": "24 hours (configurable)",
+        "password_hashing": "bcrypt via passlib"
+      },
+      "key_dependencies": [
+        "fastapi",
+        "uvicorn[standard]",
+        "sqlalchemy",
+        "psycopg2-binary",
+        "python-dotenv",
+        "pydantic",
+        "pydantic-settings",
+        "passlib[bcrypt]==1.7.4",
+        "bcrypt==3.2.0",
+        "python-jose[cryptography]",
+        "redis",
+        "rq",
+        "rq-scheduler",
+        "python-multipart",
+        "requests"
+      ]
+    },
+    "frontend": {
+      "framework": "Vue.js",
+      "version": "3.4.0",
+      "api_style": "Composition API",
+      "ui_library": {
+        "name": "PrimeVue",
+        "version": "4.4.1",
+        "theme": "Aura",
+        "icons": "PrimeIcons 7.0.0",
+        "css_framework": "PrimeFlex 4.0.0"
+      },
+      "build_tool": {
+        "name": "Vite",
+        "version": "5.0.0"
+      },
+      "router": {
+        "name": "Vue Router",
+        "version": "4.2.5"
+      },
+      "state_management": "Vue 3 reactive store (no Pinia/Vuex)",
+      "font": "Inter (Google Fonts)",
+      "key_dependencies": [
+        "vue@^3.4.0",
+        "vue-router@^4.2.5",
+        "primevue@^4.4.1",
+        "primeicons@^7.0.0",
+        "primeflex@^4.0.0",
+        "@primeuix/themes@^1.2.5"
+      ],
+      "dev_dependencies": [
+        "@vitejs/plugin-vue@^5.0.0",
+        "vite@^5.0.0"
+      ]
+    },
+    "infrastructure": {
+      "containerization": "Docker & Docker Compose",
+      "web_server": "Nginx (production frontend)",
+      "development_server": "Vite dev server (port 5173)"
+    }
+  },
+
+  "project_structure": {
+    "backend_structure": {
+      "app/": {
+        "auth/": {
+          "models.py": "User SQLAlchemy model (id, email, hashed_password, is_active, is_admin, created_at)",
+          "routes.py": "Login endpoint (POST /api/auth/login), Me endpoint (GET /api/auth/me)",
+          "schemas.py": "Pydantic schemas: Token, LoginRequest, UserMe"
+        },
+        "core/": {
+          "config.py": "Settings class using Pydantic Settings with .env file support",
+          "db.py": "SQLAlchemy engine, SessionLocal, Base, get_db() dependency",
+          "security.py": "JWT creation, password hashing/verification functions"
+        },
+        "dependencies.py": "FastAPI dependencies: get_current_user, get_current_active_user, get_current_admin_user",
+        "features/": {
+          "description": "Modular feature structure - each feature has its own folder",
+          "pattern": "[feature_name]/routes.py, service.py, schemas.py, worker.py, scheduler_service.py"
+        },
+        "jobs/": {
+          "models.py": "Job and ScheduledExport SQLAlchemy models",
+          "queues.py": "Redis connection helper functions"
+        },
+        "scripts/": {
+          "create_user.py": "Utility script to create users (admin or regular)"
+        },
+        "main.py": "FastAPI app initialization, CORS configuration, router includes"
+      },
+      "scheduler.py": "Initializes scheduled jobs from database",
+      "worker.py": "RQ worker entry point",
+      "Dockerfile": "Python 3.12-slim base image",
+      "requirements.txt": "Python dependencies"
+    },
+    "frontend_structure": {
+      "src/": {
+        "api/": {
+          "http.js": "HTTP client with automatic auth header injection",
+          "[feature]Api.js": "Feature-specific API call functions"
+        },
+        "components/": "Reusable Vue components",
+        "config/": {
+          "version.js": "Application version configuration"
+        },
+        "router/": {
+          "index.js": "Vue Router setup with routes and authentication guards"
+        },
+        "store/": {
+          "authStore.js": "Authentication state management (token, user, login/logout functions)"
+        },
+        "views/": {
+          "LoginView.vue": "Login page component",
+          "AppShell.vue": "Main application layout (header, sidebar, RouterView)",
+          "DashboardView.vue": "Dashboard/home page"
+        },
+        "App.vue": "Root component with global styles",
+        "main.js": "Vue app initialization (PrimeVue setup, router, services)"
+      },
+      "public/": "Static assets",
+      "Dockerfile": "Multi-stage build: Node 20 build stage + Nginx serve stage",
+      "nginx.conf": "Nginx configuration for SPA routing",
+      "vite.config.js": "Vite configuration",
+      "package.json": "Dependencies and scripts"
+    }
+  },
+
+  "authentication_system": {
+    "backend": {
+      "token_type": "JWT",
+      "algorithm": "HS256",
+      "expiration": "24 hours (configurable via ACCESS_TOKEN_EXPIRE_MINUTES)",
+      "endpoints": {
+        "login": {
+          "method": "POST",
+          "path": "/api/auth/login",
+          "request_body": {
+            "email": "EmailStr",
+            "password": "string"
+          },
+          "response": {
+            "access_token": "string",
+            "token_type": "bearer"
+          }
+        },
+        "me": {
+          "method": "GET",
+          "path": "/api/auth/me",
+          "requires_auth": true,
+          "response": {
+            "id": "integer",
+            "email": "string",
+            "is_active": "boolean",
+            "is_admin": "boolean",
+            "created_at": "datetime"
+          }
+        }
+      },
+      "password_storage": "bcrypt hashed passwords",
+      "user_model_fields": [
+        "id (primary key)",
+        "email (unique, indexed)",
+        "hashed_password",
+        "is_active (default: true)",
+        "is_admin (default: false)",
+        "created_at (timestamp)"
+      ],
+      "dependencies": [
+        "get_current_user - validates JWT and returns User",
+        "get_current_active_user - checks is_active flag",
+        "get_current_admin_user - checks is_admin flag"
+      ]
+    },
+    "frontend": {
+      "token_storage": {
+        "method": "localStorage",
+        "key": "pfm_token"
+      },
+      "auth_store": {
+        "state": {
+          "token": "string | null",
+          "user": "object | null",
+          "loadingUser": "boolean"
+        },
+        "computed": {
+          "isAuthenticated": "boolean (computed from token)",
+          "isAdmin": "boolean (computed from user.is_admin)"
+        },
+        "functions": [
+          "login(email, password) - calls loginApi, stores token, fetches user",
+          "logout() - clears token and user from state and localStorage",
+          "fetchMe() - fetches current user info from /api/auth/me"
+        ]
+      },
+      "router_guard": {
+        "public_routes": ["login"],
+        "behavior": "Redirects to /login if not authenticated (except public routes)",
+        "auto_redirect": "Redirects to dashboard if authenticated user visits login page"
+      },
+      "http_client": {
+        "base_url": "VITE_API_BASE_URL env var (default: http://localhost:8000/api)",
+        "auth_header": "Automatically adds Authorization: Bearer <token> header",
+        "error_handling": "Try/catch with error messages"
+      }
+    }
+  },
+
+  "login_screen": {
+    "design": {
+      "background": {
+        "type": "Gradient with animated pattern overlay",
+        "colors": ["#667eea", "#764ba2", "#f093fb"],
+        "animation": "Floating pattern animation (20s ease-in-out infinite)"
+      },
+      "layout": {
+        "type": "Centered card",
+        "structure": {
+          "header": "Gradient background with title and subtitle",
+          "content": "Form with email and password inputs",
+          "footer": "Submit button"
+        }
+      }
+    },
+    "components": {
+      "Card": "PrimeVue Card component",
+      "InputText": "PrimeVue InputText for email",
+      "Password": "PrimeVue Password component with toggle mask",
+      "Button": "PrimeVue Button with loading state",
+      "Toast": "PrimeVue Toast for notifications"
+    },
+    "features": [
+      "Email input with envelope icon",
+      "Password input with toggle mask visibility",
+      "Form validation (required fields)",
+      "Loading state on submit",
+      "Error toast notifications",
+      "Success toast + redirect to dashboard"
+    ],
+    "styling": {
+      "responsive": "Mobile-friendly with padding adjustments",
+      "animations": "Floating background pattern",
+      "typography": "Inter font, bold headings",
+      "colors": "Gradient header, white card with backdrop blur",
+      "card_shadow": "0 20px 60px rgba(0, 0, 0, 0.3)",
+      "border_radius": "16px"
+    }
+  },
+
+  "dashboard_app_shell": {
+    "app_shell": {
+      "header": {
+        "components": [
+          "Logo (icon in gradient box)",
+          "App title and version",
+          "User info (avatar, email, role badge)",
+          "Logout button"
+        ],
+        "styling": "Sticky header, white background, border-bottom shadow"
+      },
+      "sidebar": {
+        "navigation": "Menu items with icons and labels",
+        "styling": "Fixed sidebar, 260px width, scrollable",
+        "active_state": "Gradient background highlight for active route"
+      },
+      "main_content": {
+        "component": "RouterView",
+        "styling": "Flexible main area, scrollable, background color"
+      }
+    },
+    "dashboard_view": {
+      "layout": "Grid of service cards (responsive, min 320px columns)",
+      "card_structure": {
+        "icon": "Large icon in gradient box",
+        "title": "Service name",
+        "description": "Service description text",
+        "footer": "Open Service link with arrow icon"
+      },
+      "background": "Same gradient as login page",
+      "interactivity": "Cards are clickable, hover effects with transform and shadow"
+    }
+  },
+
+  "background_job_system": {
+    "architecture": {
+      "queue_system": "Redis Queue (RQ)",
+      "scheduler": "RQ Scheduler",
+      "workers": "Multiple worker containers process jobs",
+      "scheduler_service": "Loads scheduled exports from DB and registers with RQ Scheduler"
+    },
+    "job_models": {
+      "Job": {
+        "fields": [
+          "id (primary key)",
+          "feature (string)",
+          "status (pending/running/done/error)",
+          "input_filename",
+          "output_filename",
+          "options (JSONB)",
+          "error_message",
+          "created_at",
+          "updated_at"
+        ]
+      },
+      "ScheduledExport": {
+        "fields": [
+          "id (primary key)",
+          "feature (string)",
+          "name (string)",
+          "period (minute/daily/weekly/monthly)",
+          "frequency (integer)",
+          "time (Time, nullable)",
+          "day_of_week (0-6, nullable)",
+          "day_of_month (1-31, nullable)",
+          "timezone (default: UTC)",
+          "enabled (boolean)",
+          "rq_job_id (string, nullable)",
+          "options (JSONB)",
+          "created_at",
+          "updated_at"
+        ]
+      }
+    },
+    "worker_pattern": {
+      "description": "Each feature has worker.py with RQ job functions",
+      "flow": [
+        "Jobs enqueued via enqueue() from routes",
+        "Workers process jobs asynchronously",
+        "Status tracked in database"
+      ]
+    }
+  },
+
+  "api_structure": {
+    "base_url": "/api",
+    "endpoint_patterns": {
+      "auth": "/api/auth/*",
+      "features": "/api/app/[feature-name]/*",
+      "health": "/api/health"
+    },
+    "http_client": {
+      "base_url_env": "VITE_API_BASE_URL (default: http://localhost:8000/api)",
+      "auth_injection": "Automatic Bearer token injection",
+      "error_handling": "Try/catch with error messages",
+      "body_serialization": "JSON body serialization (FormData for file uploads)"
+    }
+  },
+
+  "environment_configuration": {
+    "required_variables": {
+      "SECRET_KEY": "Random secret key for JWT signing",
+      "DATABASE_URL": "PostgreSQL connection string (postgresql+psycopg2://user:pass@db:5432/dbname)",
+      "REDIS_URL": "Redis connection string (redis://redis:6379/0)",
+      "BACKEND_CORS_ORIGINS": "Comma-separated or JSON array of allowed origins",
+      "ACCESS_TOKEN_EXPIRE_MINUTES": "JWT token expiration in minutes (default: 1440)",
+      "VITE_API_BASE_URL": "Frontend API base URL (default: http://localhost:8000/api)"
+    },
+    "configuration_system": {
+      "backend": "Pydantic Settings with .env file support",
+      "frontend": "Vite env vars (prefixed with VITE_)"
+    }
+  },
+
+  "docker_setup": {
+    "services": {
+      "db": {
+        "image": "postgres:16",
+        "port": "5433:5432",
+        "volumes": ["db_data:/var/lib/postgresql/data"]
+      },
+      "redis": {
+        "image": "redis:7",
+        "port": "6379:6379"
+      },
+      "backend": {
+        "build": "./backend",
+        "port": "8000:8000",
+        "command": "uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload",
+        "volumes": ["./backend:/app", "./data:/data"],
+        "depends_on": ["db", "redis"]
+      },
+      "worker": {
+        "build": "./backend",
+        "command": "python -m worker",
+        "volumes": ["./backend:/app", "./data:/data"],
+        "depends_on": ["backend", "redis"],
+        "scalable": true
+      },
+      "scheduler": {
+        "build": "./backend",
+        "command": "sh -c \"python scheduler.py && exec rqscheduler --url $${REDIS_URL} --interval 1 --verbose\"",
+        "volumes": ["./backend:/app", "./data:/data"],
+        "depends_on": ["redis", "db"]
+      }
+    },
+    "volumes": {
+      "db_data": "PostgreSQL data persistence",
+      "./backend:/app": "Backend code mount (dev)",
+      "./data:/data": "File storage"
+    }
+  },
+
+  "key_implementation_details": {
+    "database": {
+      "orm": "SQLAlchemy with declarative base",
+      "migrations": "Manual (create tables on startup in dev)",
+      "session_management": "Dependency injection via get_db()"
+    },
+    "frontend_state": {
+      "pattern": "No Pinia/Vuex - uses Vue 3 reactive() for simple store",
+      "auth_store": "Singleton pattern with exported useAuthStore() function"
+    },
+    "styling": {
+      "theme": "PrimeVue Aura theme",
+      "css_approach": "Scoped component styles + global styles in App.vue",
+      "design_system": {
+        "primary_colors": ["#667eea", "#764ba2"],
+        "font": "Inter (Google Fonts)",
+        "gradient": "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
+      }
+    },
+    "error_handling": {
+      "backend": "FastAPI HTTPException with status codes",
+      "frontend": "Try/catch with toast notifications",
+      "jobs": "Error messages stored in Job.error_message"
+    }
+  },
+
+  "development_workflow": {
+    "starting_development": [
+      "1. Create .env file with required variables",
+      "2. Run: docker-compose up -d (starts all services)",
+      "3. Create admin user: docker-compose exec backend python -m app.scripts.create_user --email admin@example.com --admin --password <pass>",
+      "4. Frontend dev: cd frontend && npm run dev (or use Docker)",
+      "5. Access: Frontend http://localhost:5173, Backend http://localhost:8000, API Docs http://localhost:8000/docs"
+    ],
+    "adding_new_features": [
+      "1. Create feature module in backend/app/features/[feature_name]/",
+      "2. Add routes, service, schemas, worker functions",
+      "3. Include router in main.py",
+      "4. Create frontend API client in src/api/[feature]Api.js",
+      "5. Create view component in src/views/[Feature]View.vue",
+      "6. Add route in router/index.js",
+      "7. Add navigation link in AppShell.vue"
+    ]
+  },
+
+  "production_considerations": {
+    "frontend_build": "Multi-stage Docker build (Node build → Nginx serve)",
+    "nginx_config": {
+      "spa_routing": "try_files $uri $uri/ /index.html",
+      "static_caching": "1 year cache for static assets",
+      "gzip": "Enabled for text/css/js/json"
+    },
+    "environment": "Separate .env for production",
+    "scaling": "Multiple worker instances (--scale worker=3)",
+    "ssl": "Configure Let's Encrypt (not in Docker setup)",
+    "logging": "Structured logging with Python logging module"
+  },
+
+  "file_templates": {
+    "backend_main_py": {
+      "description": "FastAPI app initialization with CORS, routers, health endpoint",
+      "key_components": [
+        "FastAPI app creation",
+        "CORS middleware configuration",
+        "Database table creation (dev)",
+        "Router includes for auth and features",
+        "Health check endpoint"
+      ]
+    },
+    "frontend_main_js": {
+      "description": "Vue app initialization",
+      "key_components": [
+        "createApp(App)",
+        "router.use()",
+        "PrimeVue.use() with Aura theme",
+        "ToastService.use()",
+        "ConfirmationService.use()",
+        "app.mount('#app')"
+      ]
+    },
+    "vite_config": {
+      "description": "Vite configuration",
+      "key_settings": [
+        "@vitejs/plugin-vue plugin",
+        "Path alias: @ -> ./src",
+        "Server: host 0.0.0.0, port 5173",
+        "Build: sourcemap enabled"
+      ]
+    },
+    "docker_compose": {
+      "description": "Docker Compose configuration",
+      "key_services": ["db", "redis", "backend", "worker", "scheduler"],
+      "key_settings": ["Volume mounts", "Environment files", "Port mappings", "Dependencies"]
+    }
+  },
+
+  "specific_implementation_notes": {
+    "login_view": {
+      "file": "frontend/src/views/LoginView.vue",
+      "key_features": [
+        "Gradient background with animated pattern",
+        "Centered card layout",
+        "Email and password inputs with icons",
+        "Form validation",
+        "Toast notifications",
+        "Router navigation on success"
+      ]
+    },
+    "auth_store": {
+      "file": "frontend/src/store/authStore.js",
+      "pattern": "Reactive state with computed properties and functions",
+      "key_functions": ["login()", "logout()", "fetchMe()"]
+    },
+    "router_guard": {
+      "file": "frontend/src/router/index.js",
+      "pattern": "beforeEach navigation guard",
+      "logic": "Check authentication, redirect if needed"
+    },
+    "backend_auth_routes": {
+      "file": "backend/app/auth/routes.py",
+      "endpoints": ["POST /api/auth/login", "GET /api/auth/me"],
+      "dependencies": ["get_db", "get_current_active_user"]
+    },
+    "user_model": {
+      "file": "backend/app/auth/models.py",
+      "base": "SQLAlchemy Base",
+      "table": "users",
+      "fields": "id, email, hashed_password, is_active, is_admin, created_at"
+    }
+  },
+
+  "color_scheme": {
+    "primary_gradient": {
+      "start": "#667eea",
+      "middle": "#764ba2",
+      "end": "#f093fb"
+    },
+    "gradient_css": "linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%)",
+    "card_background": "rgba(255, 255, 255, 0.95)",
+    "card_shadow": "0 20px 60px rgba(0, 0, 0, 0.3)"
+  },
+
+  "summary": {
+    "stack_provides": [
+      "JWT authentication with login screen",
+      "Modular feature architecture",
+      "Background job processing",
+      "Scheduled task system",
+      "Modern Vue.js 3 UI with PrimeVue",
+      "FastAPI REST API",
+      "Docker containerization",
+      "PostgreSQL database",
+      "Redis queue system"
+    ],
+    "use_case": "This documentation can be used to recreate the project skeleton for Meta API campaign management tool with same stack, layers, Vue.js framework, and login screen"
+  }
+}
+

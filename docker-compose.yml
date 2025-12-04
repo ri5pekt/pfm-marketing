@@ -1,0 +1,96 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: pfm_marketing
+    ports:
+      - "5433:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      SECRET_KEY: ${SECRET_KEY:-change-this-secret-key-in-production}
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/pfm_marketing
+      REDIS_URL: redis://redis:6379/0
+      BACKEND_CORS_ORIGINS: '["http://localhost:5173","http://localhost:3000"]'
+      ACCESS_TOKEN_EXPIRE_MINUTES: 1440
+      ENVIRONMENT: development
+    volumes:
+      - ./backend:/app
+      - ./data:/data
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  worker:
+    build: ./backend
+    environment:
+      SECRET_KEY: ${SECRET_KEY:-change-this-secret-key-in-production}
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/pfm_marketing
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - ./backend:/app
+      - ./data:/data
+    depends_on:
+      - backend
+      - redis
+    command: python -m worker
+
+  scheduler:
+    build: ./backend
+    environment:
+      SECRET_KEY: ${SECRET_KEY:-change-this-secret-key-in-production}
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/pfm_marketing
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - ./backend:/app
+      - ./data:/data
+    depends_on:
+      - redis
+      - db
+    command: sh -c "python scheduler.py && exec python run_scheduler.py"
+
+  # Frontend - Run locally with: cd frontend && npm run dev
+  # frontend:
+  #   image: node:20-alpine
+  #   working_dir: /app
+  #   ports:
+  #     - "5173:5173"
+  #   environment:
+  #     VITE_API_BASE_URL: http://localhost:8000/api
+  #   volumes:
+  #     - ./frontend:/app
+  #     - /app/node_modules
+  #   depends_on:
+  #     - backend
+  #   command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+
+volumes:
+  db_data:
+

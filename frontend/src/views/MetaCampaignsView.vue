@@ -1,0 +1,2877 @@
+<template>
+  <div class="meta-campaigns">
+    <div class="page-header">
+      <h1>Meta Campaigns</h1>
+      <div class="header-actions">
+        <Button
+          label="Create Business Account"
+          icon="pi pi-plus"
+          severity="secondary"
+          outlined
+          @click="showBusinessAccountDialog = true"
+        />
+      </div>
+    </div>
+
+    <!-- Business Accounts Section -->
+    <div class="business-accounts-section">
+      <h2>Business Accounts</h2>
+      <DataTable
+        :value="businessAccounts"
+        :loading="loadingAccounts"
+        :selectionMode="'single'"
+        v-model:selection="selectedAccount"
+        class="accounts-table"
+        @row-select="onAccountSelect"
+      >
+        <Column selectionMode="single" headerStyle="width: 3rem"></Column>
+        <Column field="name" header="Name" sortable />
+        <Column field="description" header="Description" />
+        <Column field="is_default" header="Default">
+          <template #body="slotProps">
+            <Tag
+              v-if="slotProps.data.is_default"
+              value="Default"
+              severity="success"
+            />
+          </template>
+        </Column>
+        <Column header="Actions">
+          <template #body="slotProps">
+            <div class="action-buttons">
+              <Button
+                icon="pi pi-pencil"
+                severity="warning"
+                text
+                rounded
+                @click="editBusinessAccount(slotProps.data)"
+                v-tooltip.top="'Edit'"
+              />
+              <Button
+                icon="pi pi-trash"
+                severity="danger"
+                text
+                rounded
+                @click="confirmDeleteAccount(slotProps.data)"
+                v-tooltip.top="'Delete'"
+              />
+            </div>
+          </template>
+        </Column>
+      </DataTable>
+    </div>
+
+    <!-- Campaigns Section (shown when account is selected) -->
+    <div v-if="selectedAccount" class="campaigns-section">
+      <div class="section-header">
+        <h2>Campaigns for {{ selectedAccount.name }}</h2>
+        <Button
+          icon="pi pi-refresh"
+          label="Refresh"
+          severity="secondary"
+          outlined
+          @click="loadCampaigns"
+          :loading="loadingCampaigns"
+        />
+      </div>
+      <DataTable
+        :value="campaigns"
+        :loading="loadingCampaigns"
+        paginator
+        :rows="10"
+        :rowsPerPageOptions="[10, 20, 50]"
+        class="campaigns-table"
+      >
+        <Column field="id" header="ID" sortable />
+        <Column field="name" header="Name" sortable />
+        <Column field="status" header="Status" sortable>
+          <template #body="slotProps">
+            <Tag
+              :value="slotProps.data.status"
+              :severity="getCampaignStatusSeverity(slotProps.data.status)"
+            />
+          </template>
+        </Column>
+        <Column field="effective_status" header="Effective Status" sortable>
+          <template #body="slotProps">
+            <Tag
+              :value="slotProps.data.effective_status"
+              :severity="getCampaignStatusSeverity(slotProps.data.effective_status)"
+            />
+          </template>
+        </Column>
+      </DataTable>
+    </div>
+
+    <!-- Rules Section (shown when account is selected) -->
+    <div v-if="selectedAccount" class="rules-section">
+      <div class="section-header">
+        <h2>Rules for {{ selectedAccount.name }}</h2>
+        <Button
+          label="Create Rule"
+          icon="pi pi-plus"
+          @click="showCreateDialog = true"
+        />
+      </div>
+      <DataTable
+        :value="rules"
+        :loading="loading"
+        paginator
+        :rows="10"
+        :rowsPerPageOptions="[10, 20, 50]"
+        class="rules-table"
+      >
+        <Column field="name" header="Name" sortable />
+        <Column field="description" header="Description" />
+        <Column field="schedule_cron" header="Schedule" />
+        <Column field="enabled" header="Status">
+          <template #body="slotProps">
+            <Tag
+              :value="slotProps.data.enabled ? 'Enabled' : 'Disabled'"
+              :severity="slotProps.data.enabled ? 'success' : 'secondary'"
+            />
+          </template>
+        </Column>
+        <Column field="last_run_at" header="Last Run">
+          <template #body="slotProps">
+            {{ formatDate(slotProps.data.last_run_at) }}
+          </template>
+        </Column>
+        <Column field="next_run_at" header="Next Run">
+          <template #body="slotProps">
+            <span v-if="slotProps.data.schedule_cron">{{ formatDate(slotProps.data.next_run_at) }}</span>
+            <span v-else class="text-secondary">N/A</span>
+          </template>
+        </Column>
+        <Column header="Actions">
+          <template #body="slotProps">
+            <div class="action-buttons">
+              <Button
+                :icon="testingRuleId === slotProps.data.id ? 'pi pi-spin pi-spinner' : 'pi pi-play'"
+                severity="success"
+                text
+                rounded
+                :loading="testingRuleId === slotProps.data.id"
+                :disabled="testingRuleId === slotProps.data.id"
+                @click="testRule(slotProps.data.id)"
+                v-tooltip.top="'Test Rule'"
+              />
+              <Button
+                icon="pi pi-list"
+                severity="info"
+                text
+                rounded
+                @click="viewLogs(slotProps.data.id)"
+                v-tooltip.top="'View Logs'"
+              />
+              <Button
+                icon="pi pi-pencil"
+                severity="warning"
+                text
+                rounded
+                @click="editRule(slotProps.data)"
+                v-tooltip.top="'Edit'"
+              />
+              <Button
+                icon="pi pi-trash"
+                severity="danger"
+                text
+                rounded
+                @click="confirmDelete(slotProps.data)"
+                v-tooltip.top="'Delete'"
+              />
+            </div>
+          </template>
+        </Column>
+      </DataTable>
+    </div>
+
+    <!-- Business Account Create/Edit Dialog -->
+    <Dialog
+      v-model:visible="showBusinessAccountDialog"
+      :header="editingAccount ? 'Edit Business Account' : 'Create Business Account'"
+      :modal="true"
+      :style="{ width: '600px' }"
+    >
+      <div class="form-content">
+        <div class="field">
+          <label>Name *</label>
+          <InputText v-model="accountForm.name" class="w-full" />
+        </div>
+        <div class="field">
+          <label>Description</label>
+          <Textarea v-model="accountForm.description" class="w-full" rows="3" />
+        </div>
+        <div class="field">
+          <label>Meta Account ID</label>
+          <InputText v-model="accountForm.meta_account_id" class="w-full" />
+        </div>
+        <div class="field">
+          <label>Meta Access Token</label>
+          <Password
+            v-model="accountForm.meta_access_token"
+            :feedback="false"
+            toggleMask
+            class="w-full access-token-field"
+            :inputClass="'w-full'"
+          />
+        </div>
+        <div class="field checkbox-field">
+          <div class="checkbox-container">
+            <Checkbox
+              v-model="accountForm.is_default"
+              inputId="is_default"
+              :binary="true"
+            />
+            <label for="is_default" class="checkbox-label">Set as Default</label>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <Button
+          label="Cancel"
+          severity="secondary"
+          @click="closeAccountDialog"
+        />
+        <Button
+          :label="editingAccount ? 'Update' : 'Create'"
+          @click="saveBusinessAccount"
+          :loading="savingAccount"
+        />
+      </template>
+    </Dialog>
+
+    <!-- Create/Edit Rule Dialog -->
+    <Dialog
+      v-model:visible="showCreateDialog"
+      :header="editingRule ? 'Edit Rule' : 'Create Rule'"
+      :modal="true"
+      :style="{ width: '900px', maxHeight: '90vh' }"
+      class="rule-builder-dialog"
+    >
+      <div class="form-content">
+        <!-- SECTION 1: BASIC INFO -->
+        <div class="form-section">
+          <h3 class="section-title">1. Basic Info</h3>
+        <div class="field">
+            <label>Rule Name *</label>
+            <InputText v-model="ruleForm.name" class="w-full" :class="{ 'p-invalid': formErrors.name }" />
+            <small v-if="formErrors.name" class="p-error">{{ formErrors.name }}</small>
+        </div>
+        <div class="field">
+          <label>Description</label>
+          <Textarea v-model="ruleForm.description" class="w-full" rows="3" />
+        </div>
+        <div class="field">
+            <div class="flex align-items-center gap-2">
+              <InputSwitch v-model="ruleForm.enabled" inputId="enabled" />
+              <label for="enabled" class="field-label">Enabled</label>
+            </div>
+          </div>
+        </div>
+
+        <!-- SECTION 2: LEVEL AND SCOPE -->
+        <div class="form-section">
+          <h3 class="section-title">2. Level and Scope</h3>
+
+          <!-- 2A: Rule Level -->
+          <div class="subsection">
+            <h4 class="subsection-title">2A. Rule Level</h4>
+            <div class="field">
+              <label>Rule Level *</label>
+              <Select
+                v-model="ruleForm.ruleLevel"
+                :options="ruleLevelOptions"
+                optionLabel="label"
+                optionValue="value"
+                placeholder="Select rule level"
+                class="w-full"
+                :class="{ 'p-invalid': formErrors.ruleLevel }"
+                @change="onRuleLevelChange"
+              />
+              <small v-if="formErrors.ruleLevel" class="p-error">{{ formErrors.ruleLevel }}</small>
+            </div>
+          </div>
+
+          <!-- 2B: Scope Filters -->
+          <div class="subsection">
+            <h4 class="subsection-title">2B. Scope Filters</h4>
+            <div v-if="ruleForm.scopeFilters.length === 0" class="empty-scope">
+              <p>No scope filters defined.</p>
+            </div>
+            <div v-else class="scope-filters-list">
+              <div v-for="(scope, index) in ruleForm.scopeFilters" :key="index" class="scope-filter-item">
+                <div class="scope-filter-header">
+                  <strong>{{ getScopeTypeLabel(scope.type) }}</strong>
+                  <Button
+                    icon="pi pi-times"
+                    severity="danger"
+                    text
+                    rounded
+                    size="small"
+                    @click="removeScopeFilter(index)"
+                    v-tooltip.top="'Remove'"
+                  />
+                </div>
+                <div class="scope-filter-content">
+                  <!-- Name contains -->
+                  <div v-if="scope.type === 'name_contains'" class="field">
+                    <label>Keywords *</label>
+                    <Chips
+                      v-model="scope.value"
+                      placeholder="Type keyword and press Enter to add"
+                      class="w-full"
+                      :class="{ 'p-invalid': formErrors.scopeFilters && (!Array.isArray(scope.value) || scope.value.length === 0) }"
+                      @add="() => { console.log('Chip added, scope.value:', scope.value); formErrors.scopeFilters = '' }"
+                      @remove="() => { console.log('Chip removed, scope.value:', scope.value) }"
+                    />
+                    <small v-if="formErrors.scopeFilters && (!Array.isArray(scope.value) || scope.value.length === 0)" class="p-error">
+                      Please add at least one keyword by typing and pressing Enter
+                    </small>
+                    <small v-else class="p-text-secondary">Type a keyword and press Enter to add it</small>
+                    <small v-if="scope.value && Array.isArray(scope.value) && scope.value.length > 0" class="p-text-secondary mt-1 block">
+                      Added keywords ({{ scope.value.length }}): {{ scope.value.join(', ') }}
+                    </small>
+                  </div>
+                  <!-- IDs -->
+                  <div v-else-if="scope.type === 'ids'" class="field">
+                    <label>{{ ruleForm.ruleLevel === 'ad' ? 'Ad ID' : ruleForm.ruleLevel === 'ad_set' ? 'Ad Set ID' : 'IDs' }} *</label>
+                    <Chips
+                      v-model="scope.value"
+                      placeholder="Type ID and press Enter to add"
+                      class="w-full"
+                      :class="{ 'p-invalid': formErrors.scopeFilters && (!Array.isArray(scope.value) || scope.value.length === 0) }"
+                      @add="() => { formErrors.scopeFilters = '' }"
+                      @remove="() => {}"
+                    />
+                    <small v-if="formErrors.scopeFilters && (!Array.isArray(scope.value) || scope.value.length === 0)" class="p-error">
+                      Please add at least one ID by typing and pressing Enter
+                    </small>
+                    <small v-else class="p-text-secondary">Type an ID and press Enter to add it</small>
+                    <small v-if="scope.value && Array.isArray(scope.value) && scope.value.length > 0" class="p-text-secondary mt-1 block">
+                      Added IDs ({{ scope.value.length }}): {{ scope.value.join(', ') }}
+                    </small>
+                  </div>
+                  <!-- Campaign Name contains -->
+                  <div v-else-if="scope.type === 'campaign_name_contains'" class="field">
+                    <label>Keywords *</label>
+                    <Chips
+                      v-model="scope.value"
+                      placeholder="Type keyword and press Enter to add"
+                      class="w-full"
+                      :class="{ 'p-invalid': formErrors.scopeFilters && (!Array.isArray(scope.value) || scope.value.length === 0) }"
+                      @add="() => { formErrors.scopeFilters = '' }"
+                      @remove="() => {}"
+                    />
+                    <small v-if="formErrors.scopeFilters && (!Array.isArray(scope.value) || scope.value.length === 0)" class="p-error">
+                      Please add at least one keyword by typing and pressing Enter
+                    </small>
+                    <small v-else class="p-text-secondary">Type a keyword and press Enter to add it</small>
+                    <small v-if="scope.value && Array.isArray(scope.value) && scope.value.length > 0" class="p-text-secondary mt-1 block">
+                      Added keywords ({{ scope.value.length }}): {{ scope.value.join(', ') }}
+                    </small>
+                  </div>
+                  <!-- Campaign IDs -->
+                  <div v-else-if="scope.type === 'campaign_ids'" class="field">
+                    <label>Campaign IDs *</label>
+                    <Chips
+                      v-model="scope.value"
+                      placeholder="Type campaign ID and press Enter to add"
+                      class="w-full"
+                      :class="{ 'p-invalid': formErrors.scopeFilters && (!Array.isArray(scope.value) || scope.value.length === 0) }"
+                      @add="() => { formErrors.scopeFilters = '' }"
+                      @remove="() => {}"
+                    />
+                    <small v-if="formErrors.scopeFilters && (!Array.isArray(scope.value) || scope.value.length === 0)" class="p-error">
+                      Please add at least one campaign ID by typing and pressing Enter
+                    </small>
+                    <small v-else class="p-text-secondary">Type a campaign ID and press Enter to add it</small>
+                    <small v-if="scope.value && Array.isArray(scope.value) && scope.value.length > 0" class="p-text-secondary mt-1 block">
+                      Added campaign IDs ({{ scope.value.length }}): {{ scope.value.join(', ') }}
+                    </small>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="field mt-3">
+              <Button
+                label="Add Scope"
+                icon="pi pi-plus"
+                severity="secondary"
+                outlined
+                @click="showAddScopeDialog = true"
+                :disabled="availableScopeTypes.length === 0"
+              />
+            </div>
+          </div>
+        </div>
+
+        <!-- SECTION 3: TIME RANGE -->
+        <div class="form-section">
+          <h3 class="section-title">3. Time Range (Data Window)</h3>
+          <div class="field">
+            <label>Time Unit *</label>
+            <Select
+              v-model="ruleForm.timeRangeUnit"
+              :options="timeRangeUnitOptions"
+              optionLabel="label"
+              optionValue="value"
+              placeholder="Select time unit"
+              class="w-full"
+              :class="{ 'p-invalid': formErrors.timeRangeUnit }"
+            />
+            <small v-if="formErrors.timeRangeUnit" class="p-error">{{ formErrors.timeRangeUnit }}</small>
+          </div>
+          <div class="field">
+            <label>Amount *</label>
+            <InputNumber
+              v-model="ruleForm.timeRangeAmount"
+              :min="1"
+              placeholder="Enter amount"
+              class="w-full"
+              :class="{ 'p-invalid': formErrors.timeRangeAmount }"
+            />
+            <small v-if="formErrors.timeRangeAmount" class="p-error">{{ formErrors.timeRangeAmount }}</small>
+          </div>
+          <div class="field">
+            <div class="flex align-items-center gap-2">
+              <InputSwitch
+                v-model="ruleForm.excludeToday"
+                inputId="excludeToday"
+                :disabled="ruleForm.timeRangeUnit === 'minutes' || ruleForm.timeRangeUnit === 'hours'"
+              />
+              <label for="excludeToday" class="field-label">Exclude today</label>
+            </div>
+            <small class="p-text-secondary" v-if="ruleForm.timeRangeUnit === 'minutes' || ruleForm.timeRangeUnit === 'hours'">
+              (No effect for minutes or hours)
+            </small>
+          </div>
+        </div>
+
+        <!-- SECTION 4: CONDITIONS -->
+        <div class="form-section">
+          <h3 class="section-title">4. Conditions</h3>
+          <div v-if="ruleForm.conditions.length === 0" class="empty-message">
+            <p>No conditions defined. Click "Add Condition" to add one.</p>
+          </div>
+          <div v-else class="conditions-list">
+            <div v-for="(condition, index) in ruleForm.conditions" :key="index" class="condition-item">
+              <div class="condition-header">
+                <strong>Condition {{ index + 1 }}</strong>
+                <Button
+                  icon="pi pi-times"
+                  severity="danger"
+                  text
+                  rounded
+                  size="small"
+                  @click="removeCondition(index)"
+                  v-tooltip.top="'Remove'"
+                />
+              </div>
+              <div class="condition-fields">
+                <div class="field">
+                  <label>Field *</label>
+                  <Select
+                    v-model="condition.field"
+                    :options="availableConditionFields"
+                    optionLabel="label"
+                    optionValue="value"
+                    placeholder="Select field"
+                    class="w-full"
+                    @change="onConditionFieldChange(index)"
+                  />
+                </div>
+                <div class="field">
+                  <label>Operator *</label>
+                  <Select
+                    v-model="condition.operator"
+                    :options="operatorOptions"
+                    optionLabel="label"
+                    optionValue="value"
+                    placeholder="Select operator"
+                    class="w-full"
+                  />
+                </div>
+                <div class="field">
+                  <label>Value *</label>
+          <InputText
+                    v-if="!isNumericField(condition.field)"
+                    v-model="condition.value"
+                    :placeholder="getValuePlaceholder(condition.field)"
+            class="w-full"
+          />
+                  <InputNumber
+                    v-else
+                    v-model="condition.value"
+                    :min="0"
+                    :step="0.01"
+                    placeholder="Enter value"
+                    class="w-full"
+                  />
+        </div>
+              </div>
+            </div>
+          </div>
+          <div class="field mt-3">
+            <Button
+              label="Add Condition"
+              icon="pi pi-plus"
+              severity="secondary"
+              outlined
+              @click="addCondition"
+              :disabled="!ruleForm.ruleLevel"
+            />
+          </div>
+        </div>
+
+        <!-- SECTION 5: ACTIONS -->
+        <div class="form-section">
+          <h3 class="section-title">5. Actions</h3>
+          <div v-if="ruleForm.actions.length === 0" class="empty-message">
+            <p>No actions defined. Click "Add Action" to add one.</p>
+          </div>
+          <div v-else class="actions-list">
+            <div v-for="(action, index) in ruleForm.actions" :key="index" class="action-item">
+              <div class="action-header">
+                <strong>Action {{ index + 1 }}</strong>
+                <Button
+                  icon="pi pi-times"
+                  severity="danger"
+                  text
+                  rounded
+                  size="small"
+                  @click="removeAction(index)"
+                  v-tooltip.top="'Remove'"
+                />
+              </div>
+              <div class="action-fields">
+                <div class="field">
+                  <label>Action Type *</label>
+                  <Select
+                    v-model="action.type"
+                    :options="availableActionTypes"
+                    optionLabel="label"
+                    optionValue="value"
+                    placeholder="Select action type"
+                    class="w-full"
+                    @change="onActionTypeChange(index)"
+                  />
+                </div>
+                <!-- Set Status action fields -->
+                <div v-if="action.type === 'set_status'" class="field">
+                  <label>Status *</label>
+                  <Select
+                    v-model="action.status"
+                    :options="statusOptions"
+                    optionLabel="label"
+                    optionValue="value"
+                    placeholder="Select status"
+                    class="w-full"
+                  />
+                </div>
+                <!-- Adjust Daily Budget action fields -->
+                <template v-if="action.type === 'adjust_daily_budget'">
+                  <div class="field">
+                    <label>Direction *</label>
+                    <Select
+                      v-model="action.direction"
+                      :options="budgetDirectionOptions"
+                      optionLabel="label"
+                      optionValue="value"
+                      placeholder="Select direction"
+                      class="w-full"
+                    />
+                  </div>
+                  <div class="field">
+                    <label>Percent Value *</label>
+                    <InputNumber
+                      v-model="action.percent"
+                      :min="0"
+                      :max="100"
+                      :step="0.01"
+                      placeholder="Enter percentage"
+                      class="w-full"
+                    />
+                  </div>
+                  <div class="field">
+                    <label>Minimum Cap</label>
+                    <InputNumber
+                      v-model="action.minCap"
+                      :min="0"
+                      :step="0.01"
+                      placeholder="Enter minimum cap"
+                      class="w-full"
+                    />
+                  </div>
+                  <div class="field">
+                    <label>Maximum Cap</label>
+                    <InputNumber
+                      v-model="action.maxCap"
+                      :min="0"
+                      :step="0.01"
+                      placeholder="Enter maximum cap"
+                      class="w-full"
+                    />
+                  </div>
+                </template>
+              </div>
+            </div>
+          </div>
+          <div class="field mt-3">
+            <Button
+              label="Add Action"
+              icon="pi pi-plus"
+              severity="secondary"
+              outlined
+              @click="addAction"
+              :disabled="!ruleForm.ruleLevel"
+            />
+          </div>
+        </div>
+
+        <!-- SECTION 6: EXECUTION SCHEDULE -->
+        <div class="form-section scheduling-section">
+          <h3 class="section-title">6. Execution Schedule</h3>
+
+          <div class="field">
+            <label>Period</label>
+            <Select
+              v-model="ruleForm.schedulePeriod"
+              :options="periodOptions"
+              optionLabel="label"
+              optionValue="value"
+              placeholder="Select period (optional)"
+              class="w-full"
+              :class="{ 'p-invalid': scheduleFormErrors.period }"
+              @change="onSchedulePeriodChange"
+            />
+            <small v-if="scheduleFormErrors.period" class="p-error">{{ scheduleFormErrors.period }}</small>
+          </div>
+
+          <div class="field" v-if="ruleForm.schedulePeriod && ruleForm.schedulePeriod !== 'none'">
+            <label>Frequency *</label>
+            <InputNumber
+              v-model="ruleForm.scheduleFrequency"
+              :min="1"
+              placeholder="Every X"
+              class="w-full"
+              :class="{ 'p-invalid': scheduleFormErrors.frequency }"
+            />
+            <small v-if="scheduleFormErrors.frequency" class="p-error">{{ scheduleFormErrors.frequency }}</small>
+            <small class="p-text-secondary">
+              <span v-if="ruleForm.schedulePeriod === 'minute'">Every X minute(s)</span>
+              <span v-else-if="ruleForm.schedulePeriod === 'hourly'">Every X hour(s)</span>
+              <span v-else-if="ruleForm.schedulePeriod === 'daily'">Every X day(s)</span>
+              <span v-else-if="ruleForm.schedulePeriod === 'weekly'">Every X week(s)</span>
+              <span v-else-if="ruleForm.schedulePeriod === 'monthly'">Every X month(s)</span>
+            </small>
+          </div>
+
+          <div class="field" v-if="ruleForm.schedulePeriod && ruleForm.schedulePeriod !== 'none' && (ruleForm.schedulePeriod === 'daily' || ruleForm.schedulePeriod === 'weekly' || ruleForm.schedulePeriod === 'monthly')">
+            <label>Time *</label>
+            <InputText
+              v-model="ruleForm.scheduleTime"
+              placeholder="HH:MM (24-hour format, e.g., 09:00)"
+              class="w-full"
+              :class="{ 'p-invalid': scheduleFormErrors.time }"
+            />
+            <small v-if="scheduleFormErrors.time" class="p-error">{{ scheduleFormErrors.time }}</small>
+            <small class="p-text-secondary">Time in 24-hour format (e.g., 09:00 for 9 AM, 14:30 for 2:30 PM)</small>
+          </div>
+
+          <div class="field" v-if="ruleForm.schedulePeriod && ruleForm.schedulePeriod === 'weekly'">
+            <label>Day of Week *</label>
+            <Select
+              v-model="ruleForm.scheduleDayOfWeek"
+              :options="dayOfWeekOptions"
+              optionLabel="label"
+              optionValue="value"
+              placeholder="Select day"
+              class="w-full"
+              :class="{ 'p-invalid': scheduleFormErrors.dayOfWeek }"
+            />
+            <small v-if="scheduleFormErrors.dayOfWeek" class="p-error">{{ scheduleFormErrors.dayOfWeek }}</small>
+          </div>
+
+          <div class="field" v-if="ruleForm.schedulePeriod && ruleForm.schedulePeriod === 'monthly'">
+            <label>Day of Month *</label>
+            <InputNumber
+              v-model="ruleForm.scheduleDayOfMonth"
+              :min="1"
+              :max="31"
+              placeholder="1-31"
+              class="w-full"
+              :class="{ 'p-invalid': scheduleFormErrors.dayOfMonth }"
+            />
+            <small v-if="scheduleFormErrors.dayOfMonth" class="p-error">{{ scheduleFormErrors.dayOfMonth }}</small>
+          </div>
+
+          <div class="field" v-if="ruleForm.schedulePeriod && ruleForm.schedulePeriod !== 'none'">
+            <label>Timezone</label>
+            <Select
+              v-model="ruleForm.scheduleTimezone"
+              :options="timezoneOptions"
+              placeholder="Select timezone"
+              class="w-full"
+            />
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Add Scope Dialog -->
+      <Dialog
+        v-model:visible="showAddScopeDialog"
+        header="Add Scope Filter"
+        :modal="true"
+        :style="{ width: '400px' }"
+      >
+        <div class="field">
+          <label>Scope Type *</label>
+          <Select
+            v-model="selectedScopeType"
+            :options="availableScopeTypes"
+            optionLabel="label"
+            optionValue="value"
+            placeholder="Select scope type"
+            class="w-full"
+          />
+        </div>
+        <template #footer>
+          <Button
+            label="Cancel"
+            severity="secondary"
+            @click="showAddScopeDialog = false; selectedScopeType = null"
+          />
+          <Button
+            label="Add"
+            @click="addScopeFilter"
+            :disabled="!selectedScopeType"
+          />
+        </template>
+      </Dialog>
+      <template #footer>
+        <Button
+          label="Cancel"
+          severity="secondary"
+          @click="closeDialog"
+        />
+        <Button
+          :label="editingRule ? 'Update' : 'Create'"
+          @click="saveRule"
+          :loading="saving"
+        />
+      </template>
+    </Dialog>
+
+    <!-- Logs Dialog -->
+    <Dialog
+      v-model:visible="showLogsDialog"
+      header="Rule Execution Logs"
+      :modal="true"
+      :style="{ width: '1200px', maxHeight: '90vh' }"
+      class="logs-dialog"
+    >
+      <div v-if="logs.length === 0 && !loadingLogs" class="empty-message">
+        <p>No logs available for this rule.</p>
+      </div>
+      <DataTable
+        v-else
+        :value="logs"
+        :loading="loadingLogs"
+        paginator
+        :rows="10"
+        :rowsPerPageOptions="[10, 20, 50]"
+      >
+        <Column field="status" header="Status" style="width: 100px">
+          <template #body="slotProps">
+            <Tag
+              :value="slotProps.data.status"
+              :severity="getStatusSeverity(slotProps.data.status)"
+            />
+          </template>
+        </Column>
+        <Column field="message" header="Message" />
+        <Column field="created_at" header="Time" style="width: 180px">
+          <template #body="slotProps">
+            {{ formatDate(slotProps.data.created_at) }}
+          </template>
+        </Column>
+        <Column header="Actions" style="width: 180px">
+          <template #body="slotProps">
+            <div class="log-actions">
+              <Button
+                v-if="slotProps.data.details"
+                icon="pi pi-eye"
+                severity="secondary"
+                text
+                rounded
+                size="small"
+                @click="showLogDetails(slotProps.data)"
+                v-tooltip.top="'View Details'"
+              />
+              <Button
+                v-if="slotProps.data.details"
+                icon="pi pi-download"
+                severity="secondary"
+                text
+                rounded
+                size="small"
+                @click="downloadLogDetails(slotProps.data)"
+                v-tooltip.top="'Download Detailed Log'"
+              />
+              <Button
+                icon="pi pi-trash"
+                severity="danger"
+                text
+                rounded
+                size="small"
+                @click="confirmDeleteLog(slotProps.data)"
+                v-tooltip.top="'Delete Log Entry'"
+              />
+            </div>
+          </template>
+        </Column>
+      </DataTable>
+
+    </Dialog>
+
+    <!-- Log Details Dialog -->
+    <Dialog
+      v-model:visible="showLogDetailsDialog"
+      header="Log Details"
+      :modal="true"
+      :style="{ width: '1200px', maxHeight: '90vh' }"
+      class="log-details-dialog"
+    >
+      <div v-if="selectedLogDetails && selectedLogDetails.details" class="log-details">
+        <div v-if="selectedLogDetails.details.decision" class="log-section">
+          <h4>Decision: <Tag :value="selectedLogDetails.details.decision.toUpperCase()" :severity="selectedLogDetails.details.decision === 'proceed' ? 'success' : 'secondary'" /></h4>
+          </div>
+
+        <div v-if="selectedLogDetails.details.items_checked !== undefined" class="log-section">
+            <h4>Summary</h4>
+          <p><strong>Items Checked:</strong> {{ selectedLogDetails.details.items_checked }}</p>
+          <p v-if="selectedLogDetails.details.items_meeting_conditions_count !== undefined">
+            <strong>Items Meeting Conditions:</strong> {{ selectedLogDetails.details.items_meeting_conditions_count }}
+            </p>
+          </div>
+
+        <div v-if="selectedLogDetails.details.filtered_data && selectedLogDetails.details.filtered_data.length > 0" class="log-section">
+          <h4>Filtered Items ({{ selectedLogDetails.details.filtered_data.length }})</h4>
+          <DataTable :value="selectedLogDetails.details.filtered_data" size="small">
+              <Column field="id" header="ID" />
+              <Column field="name" header="Name" />
+              <Column field="status" header="Status" />
+            </DataTable>
+          </div>
+
+        <div v-if="selectedLogDetails.details.evaluations && selectedLogDetails.details.evaluations.length > 0" class="log-section">
+            <h4>Condition Evaluations</h4>
+          <div v-for="(evaluation, idx) in selectedLogDetails.details.evaluations" :key="idx" class="evaluation-item">
+              <h5>{{ evaluation.item_name }} (ID: {{ evaluation.item_id }})</h5>
+              <div v-for="(cond, condIdx) in evaluation.conditions_evaluated" :key="condIdx" class="condition-result">
+                <Tag
+                  :value="cond.passed ? 'PASS' : 'FAIL'"
+                  :severity="cond.passed ? 'success' : 'danger'"
+                />
+                <span class="condition-text">
+                  {{ cond.field }} {{ cond.operator }} {{ cond.expected_value }}
+                (actual: {{ cond.actual_value !== null && cond.actual_value !== undefined ? cond.actual_value : 'N/A' }})
+                </span>
+              </div>
+              <div class="condition-overall">
+                <strong>All Conditions Met:</strong>
+                <Tag
+                  :value="evaluation.all_conditions_met ? 'YES' : 'NO'"
+                  :severity="evaluation.all_conditions_met ? 'success' : 'danger'"
+                />
+              </div>
+            </div>
+          </div>
+
+        <div v-if="selectedLogDetails.details.actions_executed && selectedLogDetails.details.actions_executed.length > 0" class="log-section">
+          <h4>Actions Executed ({{ selectedLogDetails.details.actions_executed.length }})</h4>
+          <DataTable :value="selectedLogDetails.details.actions_executed" size="small">
+            <Column field="item_name" header="Item Name" />
+            <Column field="item_id" header="Item ID" />
+            <Column field="action_type" header="Action Type">
+              <template #body="slotProps">
+                <Tag
+                  :value="slotProps.data.action_type === 'set_status' ? 'Set Status' : 'Adjust Budget'"
+                  :severity="slotProps.data.action_type === 'set_status' ? 'info' : 'warning'"
+                />
+              </template>
+            </Column>
+            <Column field="message" header="Result" />
+            <Column field="success" header="Status">
+              <template #body="slotProps">
+                <Tag
+                  :value="slotProps.data.success ? 'SUCCESS' : 'FAILED'"
+                  :severity="slotProps.data.success ? 'success' : 'danger'"
+                />
+              </template>
+            </Column>
+            <Column v-if="selectedLogDetails.details.actions_executed.some(a => a.old_budget !== undefined)" field="old_budget" header="Old Budget">
+              <template #body="slotProps">
+                <span v-if="slotProps.data.old_budget !== undefined">${{ slotProps.data.old_budget.toFixed(2) }}</span>
+                <span v-else>-</span>
+              </template>
+            </Column>
+            <Column v-if="selectedLogDetails.details.actions_executed.some(a => a.new_budget !== undefined)" field="new_budget" header="New Budget">
+              <template #body="slotProps">
+                <span v-if="slotProps.data.new_budget !== undefined">${{ slotProps.data.new_budget.toFixed(2) }}</span>
+                <span v-else>-</span>
+              </template>
+            </Column>
+            <Column v-if="selectedLogDetails.details.actions_executed.some(a => a.error)" field="error" header="Error">
+              <template #body="slotProps">
+                <span v-if="slotProps.data.error" class="error-text">{{ slotProps.data.error }}</span>
+                <span v-else>-</span>
+              </template>
+            </Column>
+          </DataTable>
+        </div>
+
+        <div v-if="selectedLogDetails.details.error" class="log-section error-section">
+            <h4>Error</h4>
+          <pre>{{ selectedLogDetails.details.error }}</pre>
+          </div>
+
+        <div v-if="selectedLogDetails.details.rule_level || selectedLogDetails.details.scope_filters || selectedLogDetails.details.time_range" class="log-section">
+          <h4>Rule Configuration</h4>
+          <p v-if="selectedLogDetails.details.rule_level"><strong>Rule Level:</strong> {{ selectedLogDetails.details.rule_level }}</p>
+          <p v-if="selectedLogDetails.details.scope_filters"><strong>Scope Filters:</strong> {{ JSON.stringify(selectedLogDetails.details.scope_filters, null, 2) }}</p>
+          <p v-if="selectedLogDetails.details.time_range"><strong>Time Range:</strong> {{ JSON.stringify(selectedLogDetails.details.time_range, null, 2) }}</p>
+        </div>
+
+        <div v-if="selectedLogDetails.details.data_fetch" class="log-section">
+          <h4>Data Fetch Summary</h4>
+          <p><strong>Total Items Fetched:</strong> {{ selectedLogDetails.details.data_fetch.total_items || 0 }}</p>
+        </div>
+      </div>
+      <div v-else class="empty-message">
+        <p>No detailed information available for this log entry.</p>
+      </div>
+      <template #footer>
+        <Button
+          label="Close"
+          severity="secondary"
+          @click="showLogDetailsDialog = false"
+        />
+      </template>
+    </Dialog>
+
+    <Toast />
+    <ConfirmDialog />
+  </div>
+</template>
+
+<script setup>
+import { ref, computed, onMounted, watch } from 'vue'
+import { useToast } from 'primevue/usetoast'
+import { useConfirm } from 'primevue/useconfirm'
+import DataTable from 'primevue/datatable'
+import Column from 'primevue/column'
+import Button from 'primevue/button'
+import Dialog from 'primevue/dialog'
+import InputText from 'primevue/inputtext'
+import InputNumber from 'primevue/inputnumber'
+import Textarea from 'primevue/textarea'
+import Password from 'primevue/password'
+import Checkbox from 'primevue/checkbox'
+import InputSwitch from 'primevue/inputswitch'
+import Select from 'primevue/select'
+import Tag from 'primevue/tag'
+import Toast from 'primevue/toast'
+import ConfirmDialog from 'primevue/confirmdialog'
+import Chips from 'primevue/chips'
+import {
+  getRules,
+  createRule,
+  updateRule,
+  deleteRule,
+  getRuleLogs,
+  testRule as testRuleApi,
+  deleteRuleLog
+} from '@/api/metaCampaignsApi'
+import {
+  getBusinessAccounts,
+  getDefaultBusinessAccount,
+  createBusinessAccount,
+  updateBusinessAccount,
+  deleteBusinessAccount,
+  getBusinessAccountCampaigns
+} from '@/api/businessAccountsApi'
+
+const toast = useToast()
+const confirm = useConfirm()
+
+const businessAccounts = ref([])
+const selectedAccount = ref(null)
+const campaigns = ref([])
+const rules = ref([])
+const logs = ref([])
+const loadingAccounts = ref(false)
+const loadingCampaigns = ref(false)
+const loading = ref(false)
+const loadingLogs = ref(false)
+const savingAccount = ref(false)
+const saving = ref(false)
+const testingRuleId = ref(null)
+const showBusinessAccountDialog = ref(false)
+const showCreateDialog = ref(false)
+const showLogsDialog = ref(false)
+const showLogDetailsDialog = ref(false)
+const editingAccount = ref(null)
+const editingRule = ref(null)
+const selectedLogDetails = ref(null)
+
+const accountForm = ref({
+  name: '',
+  description: '',
+  meta_account_id: '',
+  meta_access_token: '',
+  is_default: false
+})
+
+const ruleForm = ref({
+  name: '',
+  description: '',
+  schedule_cron: '',
+  enabled: true,
+  // Section 2: Level and Scope
+  ruleLevel: null, // 'ad' or 'ad_set'
+  scopeFilters: [], // Array of { type, value }
+  // Section 3: Time Range
+  timeRangeUnit: null, // 'minutes', 'hours', 'days'
+  timeRangeAmount: null,
+  excludeToday: true,
+  // Section 4: Conditions (array for UI)
+  conditions: [], // Array of { field, operator, value }
+  // Section 5: Actions (array for UI)
+  actions: [], // Array of action objects
+  // Section 6: Scheduling fields
+  schedulePeriod: null,
+  scheduleFrequency: 1,
+  scheduleTime: null,
+  scheduleDayOfWeek: null,
+  scheduleDayOfMonth: null,
+  scheduleTimezone: 'UTC'
+})
+
+const scheduleFormErrors = ref({})
+const formErrors = ref({})
+const showAddScopeDialog = ref(false)
+const selectedScopeType = ref(null)
+
+const periodOptions = [
+  { label: 'None', value: 'none' },
+  { label: 'Minute', value: 'minute' },
+  { label: 'Hourly', value: 'hourly' },
+  { label: 'Daily', value: 'daily' },
+  { label: 'Weekly', value: 'weekly' },
+  { label: 'Monthly', value: 'monthly' }
+]
+
+const dayOfWeekOptions = [
+  { label: 'Monday', value: 1 },
+  { label: 'Tuesday', value: 2 },
+  { label: 'Wednesday', value: 3 },
+  { label: 'Thursday', value: 4 },
+  { label: 'Friday', value: 5 },
+  { label: 'Saturday', value: 6 },
+  { label: 'Sunday', value: 0 }
+]
+
+const timezoneOptions = [
+  'UTC',
+  'America/New_York',
+  'America/Chicago',
+  'America/Denver',
+  'America/Los_Angeles',
+  'Europe/London',
+  'Europe/Paris',
+  'Asia/Jerusalem',
+  'Asia/Tokyo',
+  'Australia/Sydney'
+]
+
+// Section 2: Rule Level options
+const ruleLevelOptions = [
+  { label: 'Ad', value: 'ad' },
+  { label: 'Ad Set', value: 'ad_set' }
+]
+
+// Scope type options
+const scopeTypeOptions = [
+  { label: 'Name contains', value: 'name_contains' },
+  { label: 'IDs', value: 'ids' },
+  { label: 'Campaign Name contains', value: 'campaign_name_contains' },
+  { label: 'Campaign IDs', value: 'campaign_ids' }
+]
+
+// Section 3: Time Range Unit options
+const timeRangeUnitOptions = [
+  { label: 'Minutes', value: 'minutes' },
+  { label: 'Hours', value: 'hours' },
+  { label: 'Days', value: 'days' }
+]
+
+// Section 4: Operator options
+const operatorOptions = [
+  { label: '>', value: '>' },
+  { label: '>=', value: '>=' },
+  { label: '<', value: '<' },
+  { label: '<=', value: '<=' },
+  { label: '=', value: '=' },
+  { label: '!=', value: '!=' }
+]
+
+// Condition fields for Ad level
+const adConditionFields = [
+  { label: 'CPA', value: 'cpa' },
+  { label: 'Spend', value: 'spend' },
+  { label: 'Conversions', value: 'conversions' },
+  { label: 'CTR', value: 'ctr' },
+  { label: 'CPC', value: 'cpc' },
+  { label: 'CPM', value: 'cpm' },
+  { label: 'Status', value: 'status' },
+  { label: 'Name contains', value: 'name_contains' }
+]
+
+// Condition fields for Ad Set level
+const adSetConditionFields = [
+  { label: 'CPA', value: 'cpa' },
+  { label: 'Spend', value: 'spend' },
+  { label: 'Conversions', value: 'conversions' },
+  { label: 'ROAS', value: 'roas' },
+  { label: 'Daily budget', value: 'daily_budget' },
+  { label: 'Status', value: 'status' },
+  { label: 'Name contains', value: 'name_contains' }
+]
+
+// Status options
+const statusOptions = [
+  { label: 'ACTIVE', value: 'ACTIVE' },
+  { label: 'PAUSED', value: 'PAUSED' },
+  { label: 'DELETED', value: 'DELETED' }
+]
+
+// Budget direction options
+const budgetDirectionOptions = [
+  { label: 'Increase', value: 'increase' },
+  { label: 'Decrease', value: 'decrease' }
+]
+
+// Computed: Available scope types (excluding already added ones)
+const availableScopeTypes = computed(() => {
+  const addedTypes = ruleForm.value.scopeFilters.map(s => s.type)
+  // Show all scope filter options (campaign filters available for ad and ad_set levels)
+  return scopeTypeOptions.filter(opt => !addedTypes.includes(opt.value))
+})
+
+// Computed: Available condition fields based on rule level
+const availableConditionFields = computed(() => {
+  if (ruleForm.value.ruleLevel === 'ad') {
+    return adConditionFields
+  } else if (ruleForm.value.ruleLevel === 'ad_set') {
+    return adSetConditionFields
+  }
+  return []
+})
+
+// Computed: Available action types based on rule level
+const availableActionTypes = computed(() => {
+  if (ruleForm.value.ruleLevel === 'ad') {
+    return [
+      { label: 'Set Status', value: 'set_status' }
+    ]
+  } else if (ruleForm.value.ruleLevel === 'ad_set') {
+    return [
+      { label: 'Adjust Daily Budget by Percentage', value: 'adjust_daily_budget' },
+      { label: 'Set Status', value: 'set_status' }
+    ]
+  }
+  return []
+})
+
+onMounted(async () => {
+  await loadBusinessAccounts()
+  // Select default account if available
+  try {
+    const defaultAccount = await getDefaultBusinessAccount()
+    selectedAccount.value = defaultAccount
+    await loadRules()
+  } catch (error) {
+    // No default account yet
+  }
+})
+
+watch(selectedAccount, async (newAccount) => {
+  if (newAccount) {
+    // Clear campaigns when account changes - they will load only when refresh is clicked
+    campaigns.value = []
+    await loadRules()
+  } else {
+    campaigns.value = []
+    rules.value = []
+  }
+})
+
+async function loadBusinessAccounts() {
+  loadingAccounts.value = true
+  try {
+    businessAccounts.value = await getBusinessAccounts()
+  } catch (error) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: 'Failed to load business accounts',
+      life: 5000
+    })
+  } finally {
+    loadingAccounts.value = false
+  }
+}
+
+async function loadCampaigns() {
+  if (!selectedAccount.value) return
+
+  loadingCampaigns.value = true
+  try {
+    const response = await getBusinessAccountCampaigns(selectedAccount.value.id)
+    campaigns.value = response.data || []
+  } catch (error) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: error.message || 'Failed to load campaigns. Make sure Meta Account ID and Access Token are configured.',
+      life: 5000
+    })
+    campaigns.value = []
+  } finally {
+    loadingCampaigns.value = false
+  }
+}
+
+async function loadRules() {
+  if (!selectedAccount.value) return
+
+  loading.value = true
+  try {
+    rules.value = await getRules(selectedAccount.value.id)
+  } catch (error) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: 'Failed to load rules',
+      life: 5000
+    })
+  } finally {
+    loading.value = false
+  }
+}
+
+function onAccountSelect(event) {
+  selectedAccount.value = event.data
+}
+
+function editBusinessAccount(account) {
+  editingAccount.value = account
+  accountForm.value = {
+    name: account.name,
+    description: account.description || '',
+    meta_account_id: account.meta_account_id || '',
+    meta_access_token: account.meta_access_token || '',
+    is_default: account.is_default || false
+  }
+  showBusinessAccountDialog.value = true
+}
+
+function closeAccountDialog() {
+  showBusinessAccountDialog.value = false
+  editingAccount.value = null
+  accountForm.value = {
+    name: '',
+    description: '',
+    meta_account_id: '',
+    meta_access_token: '',
+    is_default: false
+  }
+}
+
+async function saveBusinessAccount() {
+  savingAccount.value = true
+  try {
+    if (editingAccount.value) {
+      await updateBusinessAccount(editingAccount.value.id, accountForm.value)
+      toast.add({
+        severity: 'success',
+        summary: 'Success',
+        detail: 'Business account updated successfully',
+        life: 3000
+      })
+    } else {
+      await createBusinessAccount(accountForm.value)
+      toast.add({
+        severity: 'success',
+        summary: 'Success',
+        detail: 'Business account created successfully',
+        life: 3000
+      })
+    }
+    closeAccountDialog()
+    await loadBusinessAccounts()
+    // If default was set, select it
+    if (accountForm.value.is_default) {
+      const accounts = await getBusinessAccounts()
+      const defaultAcc = accounts.find(a => a.is_default)
+      if (defaultAcc) {
+        selectedAccount.value = defaultAcc
+      }
+    }
+  } catch (error) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: error.message || 'Failed to save business account',
+      life: 5000
+    })
+  } finally {
+    savingAccount.value = false
+  }
+}
+
+function confirmDeleteAccount(account) {
+  confirm.require({
+    message: `Are you sure you want to delete "${account.name}"? This will also delete all associated rules.`,
+    header: 'Confirm Delete',
+    icon: 'pi pi-exclamation-triangle',
+    accept: async () => {
+      try {
+        await deleteBusinessAccount(account.id)
+        toast.add({
+          severity: 'success',
+          summary: 'Success',
+          detail: 'Business account deleted successfully',
+          life: 3000
+        })
+        if (selectedAccount.value?.id === account.id) {
+          selectedAccount.value = null
+        }
+        await loadBusinessAccounts()
+      } catch (error) {
+        toast.add({
+          severity: 'error',
+          summary: 'Error',
+          detail: 'Failed to delete business account',
+          life: 5000
+        })
+      }
+    }
+  })
+}
+
+// Helper functions for scope filters
+function getScopeTypeLabel(type) {
+  const option = scopeTypeOptions.find(opt => opt.value === type)
+  let label = option ? option.label : type
+  // Make IDs label dynamic based on rule level
+  if (type === 'ids') {
+    if (ruleForm.value.ruleLevel === 'ad') {
+      label = 'Ad ID'
+    } else if (ruleForm.value.ruleLevel === 'ad_set') {
+      label = 'Ad Set ID'
+    }
+  }
+  return label
+}
+
+function addScopeFilter() {
+  if (!selectedScopeType.value) return
+
+  const newScope = {
+    type: selectedScopeType.value,
+    value: selectedScopeType.value === 'name_contains' ? [] : ''
+  }
+
+  ruleForm.value.scopeFilters.push(newScope)
+  showAddScopeDialog.value = false
+  selectedScopeType.value = null
+}
+
+function removeScopeFilter(index) {
+  ruleForm.value.scopeFilters.splice(index, 1)
+}
+
+// Helper functions for conditions
+function isNumericField(field) {
+  const numericFields = ['cpa', 'spend', 'conversions', 'ctr', 'cpc', 'cpm', 'roas', 'daily_budget']
+  return numericFields.includes(field)
+}
+
+function getValuePlaceholder(field) {
+  if (field === 'status') {
+    return 'ACTIVE or PAUSED'
+  } else if (field === 'name_contains') {
+    return 'Enter text to match'
+  }
+  return 'Enter value'
+}
+
+function addCondition() {
+  ruleForm.value.conditions.push({
+    field: null,
+    operator: null,
+    value: null
+  })
+}
+
+function removeCondition(index) {
+  ruleForm.value.conditions.splice(index, 1)
+}
+
+function onConditionFieldChange(index) {
+  // Reset value when field changes
+  ruleForm.value.conditions[index].value = null
+}
+
+// Helper functions for actions
+function addAction() {
+  ruleForm.value.actions.push({
+    type: null,
+    status: null,
+    direction: null,
+    percent: null,
+    minCap: null,
+    maxCap: null
+  })
+}
+
+function removeAction(index) {
+  ruleForm.value.actions.splice(index, 1)
+}
+
+function onActionTypeChange(index) {
+  // Reset action-specific fields when type changes
+  const action = ruleForm.value.actions[index]
+  action.status = null
+  action.direction = null
+  action.percent = null
+  action.minCap = null
+  action.maxCap = null
+}
+
+function onRuleLevelChange() {
+  // Clear conditions and actions when rule level changes
+  ruleForm.value.conditions = []
+  ruleForm.value.actions = []
+}
+
+// Helper to parse IDs from textarea (comma or newline separated) or return array as-is
+function parseIds(text) {
+  // If it's already an array (from Chips component), return it filtered
+  if (Array.isArray(text)) {
+    return text.filter(id => id && String(id).trim().length > 0)
+  }
+  // If it's a string, parse it
+  if (typeof text === 'string') {
+    if (!text || !text.trim()) return []
+    return text
+      .split(/[,\n]/)
+      .map(id => id.trim())
+      .filter(id => id.length > 0)
+  }
+  // If it's something else, return empty array
+  return []
+}
+
+// Helper to format IDs to textarea text
+function formatIds(ids) {
+  if (!ids || !Array.isArray(ids)) return ''
+  return ids.join('\n')
+}
+
+function editRule(rule) {
+  editingRule.value = rule
+  // Try to parse existing cron expression
+  const parsed = parseCronExpression(rule.schedule_cron)
+  console.log('Editing rule - Parsing cron:', rule.schedule_cron, 'Parsed result:', parsed)
+
+  const conditions = rule.conditions || {}
+  const actions = rule.actions || {}
+
+  // Parse scope filters
+  const scopeFilters = []
+  console.log('Loading conditions:', conditions)
+
+  if (conditions.name_contains) {
+    if (Array.isArray(conditions.name_contains) && conditions.name_contains.length > 0) {
+      scopeFilters.push({ type: 'name_contains', value: conditions.name_contains })
+    } else if (typeof conditions.name_contains === 'string' && conditions.name_contains.trim().length > 0) {
+      // Handle case where it might be stored as a single string
+      scopeFilters.push({ type: 'name_contains', value: [conditions.name_contains.trim()] })
+    }
+  }
+  if (conditions.ids) {
+    if (Array.isArray(conditions.ids) && conditions.ids.length > 0) {
+      scopeFilters.push({ type: 'ids', value: conditions.ids })
+    } else if (typeof conditions.ids === 'string' && conditions.ids.trim().length > 0) {
+      // Handle legacy format (comma-separated string) - convert to array
+      const ids = parseIds(conditions.ids)
+      if (ids.length > 0) {
+        scopeFilters.push({ type: 'ids', value: ids })
+      }
+    }
+  }
+  if (conditions.campaign_name_contains) {
+    if (Array.isArray(conditions.campaign_name_contains) && conditions.campaign_name_contains.length > 0) {
+      scopeFilters.push({ type: 'campaign_name_contains', value: conditions.campaign_name_contains })
+    } else if (typeof conditions.campaign_name_contains === 'string' && conditions.campaign_name_contains.trim().length > 0) {
+      scopeFilters.push({ type: 'campaign_name_contains', value: [conditions.campaign_name_contains.trim()] })
+    }
+  }
+  if (conditions.campaign_ids) {
+    if (Array.isArray(conditions.campaign_ids) && conditions.campaign_ids.length > 0) {
+      scopeFilters.push({ type: 'campaign_ids', value: conditions.campaign_ids })
+    } else if (typeof conditions.campaign_ids === 'string' && conditions.campaign_ids.trim().length > 0) {
+      // Handle legacy format (comma-separated string) - convert to array
+      const ids = parseIds(conditions.campaign_ids)
+      if (ids.length > 0) {
+        scopeFilters.push({ type: 'campaign_ids', value: ids })
+      }
+    }
+  }
+
+  console.log('Parsed scope filters:', scopeFilters)
+
+  // Parse conditions array
+  const conditionsArray = conditions.conditions || []
+
+  // Parse actions array
+  const actionsArray = actions.actions || []
+
+  // Parse time range
+  const timeRange = conditions.time_range || {}
+
+  ruleForm.value = {
+    name: rule.name,
+    description: rule.description || '',
+    schedule_cron: rule.schedule_cron,
+    enabled: rule.enabled,
+    // Section 2
+    ruleLevel: conditions.rule_level || null,
+    scopeFilters: scopeFilters,
+    // Section 3
+    timeRangeUnit: timeRange.unit || null,
+    timeRangeAmount: timeRange.amount || null,
+    excludeToday: timeRange.exclude_today !== undefined ? timeRange.exclude_today : true,
+    // Section 4 (UI array)
+    conditions: conditionsArray,
+    // Section 5 (UI array)
+    actions: actionsArray,
+    // Section 6
+    schedulePeriod: parsed.period || 'none',
+    scheduleFrequency: parsed.frequency || 1,
+    scheduleTime: parsed.time || null,
+    scheduleDayOfWeek: parsed.dayOfWeek !== null ? parsed.dayOfWeek : null,
+    scheduleDayOfMonth: parsed.dayOfMonth !== null && parsed.dayOfMonth !== undefined ? parsed.dayOfMonth : null,
+    scheduleTimezone: parsed.timezone || 'UTC'
+  }
+
+  console.log('Loaded form for editing:', {
+    schedulePeriod: ruleForm.value.schedulePeriod,
+    scheduleFrequency: ruleForm.value.scheduleFrequency,
+    scheduleTime: ruleForm.value.scheduleTime,
+    parsedCron: parsed,
+    originalCron: rule.schedule_cron
+  })
+
+  scheduleFormErrors.value = {}
+  formErrors.value = {}
+  showCreateDialog.value = true
+}
+
+function closeDialog() {
+  showCreateDialog.value = false
+  editingRule.value = null
+  ruleForm.value = {
+    name: '',
+    description: '',
+    schedule_cron: '',
+    enabled: true,
+    ruleLevel: null,
+    scopeFilters: [],
+    timeRangeUnit: null,
+    timeRangeAmount: null,
+    excludeToday: true,
+    conditions: [],
+    actions: [],
+    schedulePeriod: null,
+    scheduleFrequency: 1,
+    scheduleTime: null,
+    scheduleDayOfWeek: null,
+    scheduleDayOfMonth: null,
+    scheduleTimezone: 'UTC'
+  }
+  scheduleFormErrors.value = {}
+  formErrors.value = {}
+  showAddScopeDialog.value = false
+  selectedScopeType.value = null
+}
+
+function onSchedulePeriodChange() {
+  // Reset dependent fields when period changes
+  ruleForm.value.scheduleDayOfWeek = null
+  ruleForm.value.scheduleDayOfMonth = null
+  scheduleFormErrors.value = {}
+}
+
+function validateSchedule() {
+  scheduleFormErrors.value = {}
+
+  // If period is 'none' or null/empty, no validation needed
+  if (!ruleForm.value.schedulePeriod || ruleForm.value.schedulePeriod === 'none') {
+    return true
+  }
+
+  if (!ruleForm.value.scheduleFrequency || ruleForm.value.scheduleFrequency < 1) {
+    scheduleFormErrors.value.frequency = 'Frequency must be at least 1'
+  }
+
+  if (ruleForm.value.schedulePeriod === 'minute' || ruleForm.value.schedulePeriod === 'hourly') {
+    // Minute and hourly don't need time, day_of_week, or day_of_month
+  } else if (ruleForm.value.schedulePeriod === 'daily') {
+    if (!ruleForm.value.scheduleTime) {
+      scheduleFormErrors.value.time = 'Time is required for daily period'
+    } else {
+      const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/
+      if (!timeRegex.test(ruleForm.value.scheduleTime)) {
+        scheduleFormErrors.value.time = 'Time must be in HH:MM format (24-hour)'
+      }
+    }
+  } else if (ruleForm.value.schedulePeriod === 'weekly') {
+    if (!ruleForm.value.scheduleTime) {
+      scheduleFormErrors.value.time = 'Time is required for weekly period'
+    } else {
+      const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/
+      if (!timeRegex.test(ruleForm.value.scheduleTime)) {
+        scheduleFormErrors.value.time = 'Time must be in HH:MM format (24-hour)'
+      }
+    }
+    if (ruleForm.value.scheduleDayOfWeek === null) {
+      scheduleFormErrors.value.dayOfWeek = 'Day of week is required for weekly period'
+    }
+  } else if (ruleForm.value.schedulePeriod === 'monthly') {
+    if (!ruleForm.value.scheduleTime) {
+      scheduleFormErrors.value.time = 'Time is required for monthly period'
+    } else {
+      const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/
+      if (!timeRegex.test(ruleForm.value.scheduleTime)) {
+        scheduleFormErrors.value.time = 'Time must be in HH:MM format (24-hour)'
+      }
+    }
+    if (ruleForm.value.scheduleDayOfMonth === null) {
+      scheduleFormErrors.value.dayOfMonth = 'Day of month is required for monthly period'
+    } else if (ruleForm.value.scheduleDayOfMonth < 1 || ruleForm.value.scheduleDayOfMonth > 31) {
+      scheduleFormErrors.value.dayOfMonth = 'Day of month must be between 1 and 31'
+    }
+  }
+
+  return Object.keys(scheduleFormErrors.value).length === 0
+}
+
+function buildCronExpression() {
+  const { schedulePeriod, scheduleFrequency, scheduleTime, scheduleDayOfWeek, scheduleDayOfMonth } = ruleForm.value
+
+  if (!schedulePeriod || schedulePeriod === 'none') {
+    return null
+  }
+
+  let cron = ''
+
+  if (schedulePeriod === 'minute') {
+    // Every X minutes: */X * * * *
+    cron = `*/${scheduleFrequency} * * * *`
+  } else if (schedulePeriod === 'hourly') {
+    // Every X hours: 0 */X * * *
+    cron = `0 */${scheduleFrequency} * * *`
+  } else if (schedulePeriod === 'daily') {
+    // Daily at specific time: minute hour * * *
+    // Note: Cron doesn't support "every X days" directly, so frequency is only used for UI
+    // For frequency > 1, this would require tracking last run date which is beyond simple cron
+    const [hour, minute] = scheduleTime ? scheduleTime.split(':') : ['0', '0']
+    if (scheduleFrequency === 1) {
+      cron = `${minute || 0} ${hour || 0} * * *`
+    } else {
+      // For frequency > 1, we approximate with day of month pattern
+      // This is a simplified approach - for true "every X days", you'd need job queue tracking
+      cron = `${minute || 0} ${hour || 0} */${scheduleFrequency} * *`
+    }
+  } else if (schedulePeriod === 'weekly') {
+    // Weekly on specific day at specific time: minute hour * * dayOfWeek
+    // Note: Cron doesn't support "every X weeks" directly
+    const [hour, minute] = scheduleTime ? scheduleTime.split(':') : ['0', '0']
+    // Cron uses 0-6 for Sunday-Saturday, our format uses 0 for Sunday, 1-6 for Mon-Sat
+    const cronDayOfWeek = scheduleDayOfWeek !== null && scheduleDayOfWeek !== undefined ? scheduleDayOfWeek : '*'
+    cron = `${minute || 0} ${hour || 0} * * ${cronDayOfWeek}`
+  } else if (schedulePeriod === 'monthly') {
+    // Monthly on specific day at specific time: minute hour dayOfMonth * *
+    // For frequency > 1 (every X months), we use: minute hour dayOfMonth */X *
+    const [hour, minute] = scheduleTime ? scheduleTime.split(':') : ['0', '0']
+    const day = scheduleDayOfMonth || 1
+    if (scheduleFrequency === 1) {
+      cron = `${minute || 0} ${hour || 0} ${day} * *`
+    } else {
+      cron = `${minute || 0} ${hour || 0} ${day} */${scheduleFrequency} *`
+    }
+  }
+
+  return cron
+}
+
+function parseCronExpression(cron) {
+  if (!cron) {
+    return {
+      period: 'none',
+      frequency: 1,
+      time: null,
+      dayOfWeek: null,
+      dayOfMonth: null,
+      timezone: 'UTC'
+    }
+  }
+
+  const parts = cron.split(/\s+/)
+  if (parts.length !== 5) {
+    return {
+      period: null,
+      frequency: 1,
+      time: null,
+      dayOfWeek: null,
+      dayOfMonth: null,
+      timezone: 'UTC'
+    }
+  }
+
+  const [minute, hour, dayOfMonth, month, dayOfWeek] = parts
+  let period = null
+  let frequency = 1
+  let time = null
+  let parsedDayOfWeek = null
+  let parsedDayOfMonth = null
+
+  // Try to detect pattern - check most specific patterns first
+  if (minute.startsWith('*/')) {
+    // Every X minutes: */X * * * *
+    period = 'minute'
+    frequency = parseInt(minute.substring(2)) || 1
+  } else if (hour.startsWith('*/') && !minute.startsWith('*/') && minute !== '*') {
+    // Every X hours: 0 */X * * *
+    period = 'hourly'
+    frequency = parseInt(hour.substring(2)) || 1
+  } else if (dayOfMonth.startsWith('*/') && month === '*' && dayOfWeek === '*') {
+    // Every X days: minute hour */X * *
+    period = 'daily'
+    frequency = parseInt(dayOfMonth.substring(2)) || 1
+    time = `${hour.padStart(2, '0')}:${minute.padStart(2, '0')}`
+  } else if (month.startsWith('*/') && dayOfMonth !== '*' && dayOfWeek !== '*') {
+    // Monthly pattern with frequency: minute hour dayOfMonth */X dayOfWeek
+    period = 'monthly'
+    frequency = parseInt(month.substring(2)) || 1
+    parsedDayOfMonth = parseInt(dayOfMonth) || null
+    parsedDayOfWeek = parseInt(dayOfWeek) !== null ? parseInt(dayOfWeek) : null
+    time = `${hour.padStart(2, '0')}:${minute.padStart(2, '0')}`
+  } else if (month.startsWith('*/') && dayOfMonth !== '*' && dayOfWeek === '*') {
+    // Monthly pattern with frequency: minute hour dayOfMonth */X *
+    period = 'monthly'
+    frequency = parseInt(month.substring(2)) || 1
+    parsedDayOfMonth = parseInt(dayOfMonth) || null
+    time = `${hour.padStart(2, '0')}:${minute.padStart(2, '0')}`
+  } else if (dayOfWeek !== '*' && month === '*' && dayOfMonth === '*') {
+    // Weekly pattern: minute hour * * dayOfWeek
+    period = 'weekly'
+    frequency = 1 // Weekly frequency is harder to detect
+    parsedDayOfWeek = parseInt(dayOfWeek) !== null ? parseInt(dayOfWeek) : null
+    time = `${hour.padStart(2, '0')}:${minute.padStart(2, '0')}`
+  } else if (dayOfMonth !== '*' && month === '*' && dayOfWeek === '*') {
+    // Monthly on specific day: minute hour dayOfMonth * *
+    period = 'monthly'
+    frequency = 1
+    parsedDayOfMonth = parseInt(dayOfMonth) || null
+    time = `${hour.padStart(2, '0')}:${minute.padStart(2, '0')}`
+  } else if (dayOfMonth === '*' && month === '*' && dayOfWeek === '*') {
+    // Daily at specific time: minute hour * * * (most common pattern)
+    period = 'daily'
+    frequency = 1
+    time = `${hour.padStart(2, '0')}:${minute.padStart(2, '0')}`
+  }
+
+  return {
+    period,
+    frequency,
+    time,
+    dayOfWeek: parsedDayOfWeek,
+    dayOfMonth: parsedDayOfMonth,
+    timezone: 'UTC'
+  }
+}
+
+function validateForm() {
+  formErrors.value = {}
+
+  // Section 1: Basic Info
+  if (!ruleForm.value.name || ruleForm.value.name.trim() === '') {
+    formErrors.value.name = 'Rule name is required'
+  }
+
+  // Section 2: Rule Level
+  if (!ruleForm.value.ruleLevel) {
+    formErrors.value.ruleLevel = 'Rule level is required'
+  }
+
+  // Section 2B: At least one scope filter required
+  if (!ruleForm.value.scopeFilters || ruleForm.value.scopeFilters.length === 0) {
+    formErrors.value.scopeFilters = 'At least one scope filter is required'
+  } else {
+    // Validate that each scope filter has a value
+    const invalidScopes = []
+    ruleForm.value.scopeFilters.forEach((scope, idx) => {
+      console.log(`Validating scope filter ${idx}:`, { type: scope.type, value: scope.value, valueType: typeof scope.value, isArray: Array.isArray(scope.value) })
+
+      if (scope.type === 'name_contains') {
+        // Check if it's an array with at least one non-empty string
+        if (!scope.value) {
+          invalidScopes.push({ index: idx, type: scope.type, label: 'Name contains', reason: 'value is null/undefined' })
+        } else if (!Array.isArray(scope.value)) {
+          invalidScopes.push({ index: idx, type: scope.type, label: 'Name contains', reason: 'value is not an array', actualType: typeof scope.value })
+        } else if (scope.value.length === 0) {
+          invalidScopes.push({ index: idx, type: scope.type, label: 'Name contains', reason: 'array is empty' })
+        } else {
+          // Check if all values are empty
+          const validValues = scope.value.filter(v => v && (typeof v === 'string' && v.trim().length > 0))
+          if (validValues.length === 0) {
+            invalidScopes.push({ index: idx, type: scope.type, label: 'Name contains', reason: 'all values are empty', originalLength: scope.value.length })
+          }
+        }
+      } else if (scope.type === 'ids') {
+        // Chips component stores array, but we need to check if it's empty
+        if (Array.isArray(scope.value)) {
+          const filtered = scope.value.filter(v => v && String(v).trim().length > 0)
+          if (filtered.length === 0) {
+            const label = ruleForm.value.ruleLevel === 'ad' ? 'Ad ID' : ruleForm.value.ruleLevel === 'ad_set' ? 'Ad Set ID' : 'IDs'
+            invalidScopes.push({ index: idx, type: scope.type, label: label, reason: 'value is empty' })
+          }
+        } else if (typeof scope.value === 'string' && scope.value.trim().length === 0) {
+          const label = ruleForm.value.ruleLevel === 'ad' ? 'Ad ID' : ruleForm.value.ruleLevel === 'ad_set' ? 'Ad Set ID' : 'IDs'
+          invalidScopes.push({ index: idx, type: scope.type, label: label, reason: 'value is empty' })
+        } else {
+          const ids = parseIds(scope.value)
+          if (ids.length === 0) {
+            const label = ruleForm.value.ruleLevel === 'ad' ? 'Ad ID' : ruleForm.value.ruleLevel === 'ad_set' ? 'Ad Set ID' : 'IDs'
+            invalidScopes.push({ index: idx, type: scope.type, label: label, reason: 'no valid IDs parsed' })
+          }
+        }
+      }
+    })
+    if (invalidScopes.length > 0) {
+      const labels = invalidScopes.map(s => s.label).join(', ')
+      const nameContainsIssue = invalidScopes.find(s => s.type === 'name_contains')
+      if (nameContainsIssue) {
+        formErrors.value.scopeFilters = `The "Name contains" filter requires at least one keyword. Please type a keyword and press Enter to add it.`
+      } else {
+        formErrors.value.scopeFilters = `The following scope filter(s) are missing values: ${labels}. Please fill in all required fields.`
+      }
+      console.error('Invalid scope filters:', invalidScopes)
+      console.error('Current scope filters data:', JSON.parse(JSON.stringify(ruleForm.value.scopeFilters)))
+    }
+  }
+
+  // Section 3: Time Range
+  if (!ruleForm.value.timeRangeUnit) {
+    formErrors.value.timeRangeUnit = 'Time unit is required'
+  }
+  if (!ruleForm.value.timeRangeAmount || ruleForm.value.timeRangeAmount < 1) {
+    formErrors.value.timeRangeAmount = 'Time amount is required and must be at least 1'
+  }
+
+  // Section 6: Schedule
+  if (!validateSchedule()) {
+    // Errors already in scheduleFormErrors
+  }
+
+  return Object.keys(formErrors.value).length === 0 && Object.keys(scheduleFormErrors.value).length === 0
+}
+
+async function saveRule() {
+  if (!selectedAccount.value) {
+    toast.add({
+      severity: 'warn',
+      summary: 'Warning',
+      detail: 'Please select a business account first',
+      life: 3000
+    })
+    return
+  }
+
+  // Validate all form sections
+  if (!validateForm()) {
+    // Build detailed error message
+    const errors = []
+    if (formErrors.value.name) errors.push(`Name: ${formErrors.value.name}`)
+    if (formErrors.value.ruleLevel) errors.push(`Rule Level: ${formErrors.value.ruleLevel}`)
+    if (formErrors.value.scopeFilters) errors.push(`Scope Filters: ${formErrors.value.scopeFilters}`)
+    if (formErrors.value.timeRangeUnit) errors.push(`Time Unit: ${formErrors.value.timeRangeUnit}`)
+    if (formErrors.value.timeRangeAmount) errors.push(`Time Amount: ${formErrors.value.timeRangeAmount}`)
+    if (scheduleFormErrors.value.period) errors.push(`Schedule Period: ${scheduleFormErrors.value.period}`)
+    if (scheduleFormErrors.value.frequency) errors.push(`Schedule Frequency: ${scheduleFormErrors.value.frequency}`)
+    if (scheduleFormErrors.value.time) errors.push(`Schedule Time: ${scheduleFormErrors.value.time}`)
+    if (scheduleFormErrors.value.dayOfWeek) errors.push(`Day of Week: ${scheduleFormErrors.value.dayOfWeek}`)
+    if (scheduleFormErrors.value.dayOfMonth) errors.push(`Day of Month: ${scheduleFormErrors.value.dayOfMonth}`)
+
+    const errorMessage = errors.length > 0 ? errors.join('; ') : 'Please fix all form errors'
+
+    toast.add({
+      severity: 'warn',
+      summary: 'Validation Error',
+      detail: errorMessage,
+      life: 6000
+    })
+    console.error('Form validation errors:', { formErrors: formErrors.value, scheduleFormErrors: scheduleFormErrors.value })
+    console.error('Current form state:', {
+      name: ruleForm.value.name,
+      ruleLevel: ruleForm.value.ruleLevel,
+      scopeFilters: ruleForm.value.scopeFilters,
+      timeRangeUnit: ruleForm.value.timeRangeUnit,
+      timeRangeAmount: ruleForm.value.timeRangeAmount,
+      schedulePeriod: ruleForm.value.schedulePeriod,
+      scheduleFrequency: ruleForm.value.scheduleFrequency
+    })
+    return
+  }
+
+  // Build cron expression from schedule fields
+  const cronExpression = buildCronExpression()
+  // Allow null/empty cron expression when period is "none"
+  if (ruleForm.value.schedulePeriod && ruleForm.value.schedulePeriod !== 'none' && !cronExpression) {
+    toast.add({
+      severity: 'warn',
+      summary: 'Validation Error',
+      detail: 'Invalid schedule configuration',
+      life: 3000
+    })
+    return
+  }
+
+  // Build scope filters object
+  const scopeObject = {}
+  console.log('Current scope filters in form:', ruleForm.value.scopeFilters)
+
+  ruleForm.value.scopeFilters.forEach((scope, idx) => {
+    console.log(`Processing scope filter ${idx}:`, scope)
+
+    if (scope.type === 'name_contains') {
+      // Chips component stores array of strings
+      console.log('Name contains value:', scope.value, 'Type:', typeof scope.value, 'Is Array:', Array.isArray(scope.value))
+
+      if (Array.isArray(scope.value) && scope.value.length > 0) {
+        const filtered = scope.value.filter(v => v && v.trim().length > 0)
+        if (filtered.length > 0) {
+          scopeObject.name_contains = filtered
+          console.log('Saving name_contains:', filtered)
+        }
+      } else if (typeof scope.value === 'string' && scope.value.trim().length > 0) {
+        // Fallback in case it's stored as string
+        scopeObject.name_contains = [scope.value.trim()]
+        console.log('Saving name_contains as string:', scopeObject.name_contains)
+      } else {
+        console.warn('name_contains scope has no valid value:', scope.value)
+      }
+    } else if (scope.type === 'ids') {
+      // Chips component stores array of strings
+      if (Array.isArray(scope.value) && scope.value.length > 0) {
+        const filtered = scope.value.filter(v => v && v.trim().length > 0)
+        if (filtered.length > 0) {
+          scopeObject.ids = filtered
+          console.log('Saving ids:', filtered)
+        }
+      } else if (typeof scope.value === 'string' && scope.value.trim().length > 0) {
+        // Fallback: handle comma-separated string
+        const ids = parseIds(scope.value)
+        if (ids.length > 0) {
+          scopeObject.ids = ids
+          console.log('Saving ids from string:', ids)
+        }
+      }
+    } else if (scope.type === 'campaign_name_contains') {
+      // Chips component stores array of strings
+      if (Array.isArray(scope.value) && scope.value.length > 0) {
+        const filtered = scope.value.filter(v => v && v.trim().length > 0)
+        if (filtered.length > 0) {
+          scopeObject.campaign_name_contains = filtered
+          console.log('Saving campaign_name_contains:', filtered)
+        }
+      } else if (typeof scope.value === 'string' && scope.value.trim().length > 0) {
+        scopeObject.campaign_name_contains = [scope.value.trim()]
+        console.log('Saving campaign_name_contains as string:', scopeObject.campaign_name_contains)
+      }
+    } else if (scope.type === 'campaign_ids') {
+      // Chips component stores array of strings
+      if (Array.isArray(scope.value) && scope.value.length > 0) {
+        const filtered = scope.value.filter(v => v && v.trim().length > 0)
+        if (filtered.length > 0) {
+          scopeObject.campaign_ids = filtered
+          console.log('Saving campaign_ids:', filtered)
+        }
+      } else if (typeof scope.value === 'string' && scope.value.trim().length > 0) {
+        // Fallback: handle comma-separated string
+        const ids = parseIds(scope.value)
+        if (ids.length > 0) {
+          scopeObject.campaign_ids = ids
+          console.log('Saving campaign_ids from string:', ids)
+        }
+      }
+    }
+  })
+
+  // Debug: Log scope filters being saved
+  console.log('Final scope object to save:', scopeObject)
+  if (Object.keys(scopeObject).length === 0) {
+    console.warn('WARNING: No scope filters being saved! Check that scope filters are properly populated in the form.')
+  }
+
+  // Build conditions JSON
+  const conditionsJSON = {
+    rule_level: ruleForm.value.ruleLevel,
+    time_range: {
+      unit: ruleForm.value.timeRangeUnit,
+      amount: ruleForm.value.timeRangeAmount,
+      exclude_today: ruleForm.value.excludeToday
+    },
+    conditions: ruleForm.value.conditions.map(c => ({
+      field: c.field,
+      operator: c.operator,
+      value: c.value
+    })),
+    ...scopeObject
+  }
+
+  // Build actions JSON
+  const actionsJSON = {
+    actions: ruleForm.value.actions.map(a => {
+      const action = { type: a.type }
+      if (a.type === 'set_status') {
+        action.status = a.status
+      } else if (a.type === 'adjust_daily_budget') {
+        action.direction = a.direction
+        action.percent = a.percent
+        if (a.minCap !== null && a.minCap !== undefined) action.min_cap = a.minCap
+        if (a.maxCap !== null && a.maxCap !== undefined) action.max_cap = a.maxCap
+      }
+      return action
+    })
+  }
+
+  saving.value = true
+  try {
+    const ruleData = {
+      name: ruleForm.value.name,
+      description: ruleForm.value.description,
+      schedule_cron: cronExpression,
+      enabled: ruleForm.value.enabled,
+      conditions: conditionsJSON,
+      actions: actionsJSON,
+      business_account_id: selectedAccount.value.id
+    }
+
+    // Debug: Log what's being saved
+    console.log('Saving rule data:', JSON.stringify(ruleData, null, 2))
+
+    if (editingRule.value) {
+      await updateRule(editingRule.value.id, ruleData)
+      toast.add({
+        severity: 'success',
+        summary: 'Success',
+        detail: 'Rule updated successfully',
+        life: 3000
+      })
+    } else {
+      await createRule(ruleData)
+      toast.add({
+        severity: 'success',
+        summary: 'Success',
+        detail: 'Rule created successfully',
+        life: 3000
+      })
+    }
+    closeDialog()
+    await loadRules()
+  } catch (error) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: error.message || 'Failed to save rule',
+      life: 5000
+    })
+  } finally {
+    saving.value = false
+  }
+}
+
+function confirmDelete(rule) {
+  confirm.require({
+    message: `Are you sure you want to delete "${rule.name}"?`,
+    header: 'Confirm Delete',
+    icon: 'pi pi-exclamation-triangle',
+    accept: async () => {
+      try {
+        await deleteRule(rule.id)
+        toast.add({
+          severity: 'success',
+          summary: 'Success',
+          detail: 'Rule deleted successfully',
+          life: 3000
+        })
+        await loadRules()
+      } catch (error) {
+        toast.add({
+          severity: 'error',
+          summary: 'Error',
+          detail: 'Failed to delete rule',
+          life: 5000
+        })
+      }
+    }
+  })
+}
+
+async function testRule(ruleId) {
+  testingRuleId.value = ruleId
+  try {
+    const result = await testRuleApi(ruleId)
+    toast.add({
+      severity: result.decision === 'proceed' ? 'success' : 'info',
+      summary: 'Rule Test Complete',
+      detail: result.message || 'Rule test completed',
+      life: 5000
+    })
+    // Reload rules and logs to show updated information
+    await loadRules()
+    // If viewing logs for this rule, refresh them
+    if (editingRule.value?.id === ruleId) {
+      await viewLogs(ruleId)
+    }
+  } catch (error) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: error.message || 'Failed to test rule',
+      life: 5000
+    })
+  } finally {
+    testingRuleId.value = null
+  }
+}
+
+const currentRuleForLogs = ref(null)
+
+async function viewLogs(ruleId) {
+  showLogsDialog.value = true
+  loadingLogs.value = true
+  try {
+    // Store the rule ID for reference in downloads
+    currentRuleForLogs.value = rules.value.find(r => r.id === ruleId) || null
+    logs.value = await getRuleLogs(ruleId)
+  } catch (error) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: 'Failed to load logs',
+      life: 5000
+    })
+  } finally {
+    loadingLogs.value = false
+  }
+}
+
+function confirmDeleteLog(log) {
+  confirm.require({
+    message: `Are you sure you want to delete this log entry? This will remove the log from the database. Note: Any downloaded files on your computer will not be deleted.`,
+    header: 'Confirm Delete',
+    icon: 'pi pi-exclamation-triangle',
+    accept: async () => {
+      try {
+        if (!currentRuleForLogs.value) {
+          toast.add({
+            severity: 'error',
+            summary: 'Error',
+            detail: 'Cannot delete: Rule context missing',
+            life: 3000
+          })
+          return
+        }
+        await deleteRuleLog(currentRuleForLogs.value.id, log.id)
+        toast.add({
+          severity: 'success',
+          summary: 'Success',
+          detail: 'Log entry deleted successfully',
+          life: 3000
+        })
+        // Reload logs
+        await viewLogs(currentRuleForLogs.value.id)
+      } catch (error) {
+        toast.add({
+          severity: 'error',
+          summary: 'Error',
+          detail: error.message || 'Failed to delete log entry',
+          life: 3000
+        })
+      }
+    }
+  })
+}
+
+function showLogDetails(log) {
+  selectedLogDetails.value = log
+  showLogDetailsDialog.value = true
+}
+
+function downloadLogDetails(log) {
+  if (!log || !log.details) {
+    toast.add({
+      severity: 'warn',
+      summary: 'Warning',
+      detail: 'No detailed log data available',
+      life: 3000
+    })
+    return
+  }
+
+  // Format log details for download
+  const ruleInfo = currentRuleForLogs.value || editingRule.value
+  const logData = {
+    rule_id: ruleInfo?.id || 'N/A',
+    rule_name: ruleInfo?.name || 'N/A',
+    log_id: log.id,
+    timestamp: log.created_at,
+    status: log.status,
+    message: log.message,
+    details: log.details
+  }
+
+  // Create formatted text content
+  let content = `RULE EXECUTION LOG REPORT\n`
+  content += `==========================================\n\n`
+  content += `Rule ID: ${logData.rule_id}\n`
+  content += `Rule Name: ${logData.rule_name}\n`
+  content += `Log ID: ${logData.log_id}\n`
+  content += `Timestamp: ${formatDate(logData.timestamp)}\n`
+  content += `Status: ${logData.status.toUpperCase()}\n`
+  content += `Message: ${logData.message}\n\n`
+
+  const details = logData.details
+
+  // Decision
+  if (details.decision) {
+    content += `DECISION: ${details.decision.toUpperCase()}\n`
+    content += `==========================================\n\n`
+  }
+
+  // Summary
+  if (details.items_checked !== undefined) {
+    content += `SUMMARY\n`
+    content += `------------------------------------------\n`
+    content += `Items Checked: ${details.items_checked}\n`
+    if (details.items_meeting_conditions_count !== undefined) {
+      content += `Items Meeting Conditions: ${details.items_meeting_conditions_count}\n`
+    }
+    content += `\n`
+  }
+
+  // Rule Configuration
+  const hasScopeFilters = details.scope_filters || details.name_contains || details.ids
+  if (details.rule_level || hasScopeFilters || details.time_range || (details.conditions && details.conditions.length > 0)) {
+    content += `RULE CONFIGURATION\n`
+    content += `------------------------------------------\n`
+    if (details.rule_level) {
+      content += `Rule Level: ${details.rule_level}\n`
+    }
+
+    // Build scope filters object - check both scope_filters key and individual keys
+    const scopeFilters = details.scope_filters || {}
+    if (details.name_contains && !scopeFilters.name_contains) {
+      scopeFilters.name_contains = details.name_contains
+    }
+    if (details.ids && !scopeFilters.ids) {
+      scopeFilters.ids = details.ids
+    }
+
+    if (Object.keys(scopeFilters).length > 0) {
+      content += `Scope Filters: ${JSON.stringify(scopeFilters, null, 2)}\n`
+    } else {
+      content += `Scope Filters: {}\n`
+    }
+
+    if (details.time_range) {
+      content += `Time Range: ${JSON.stringify(details.time_range, null, 2)}\n`
+    }
+
+    // Show conditions configuration
+    if (details.conditions && Array.isArray(details.conditions) && details.conditions.length > 0) {
+      content += `Conditions Configuration:\n`
+      details.conditions.forEach((cond, idx) => {
+        content += `  Condition ${idx + 1}: ${cond.field} ${cond.operator} ${cond.value}\n`
+      })
+      content += `\n`
+    }
+
+    content += `\n`
+  }
+
+  // Data Fetch Summary
+  if (details.data_fetch) {
+    content += `DATA FETCH SUMMARY\n`
+    content += `------------------------------------------\n`
+    content += `Total Items Fetched: ${details.data_fetch.total_items || 0}\n`
+    if (details.data_fetch.items && details.data_fetch.items.length > 0) {
+      content += `\nSample Items:\n`
+      details.data_fetch.items.slice(0, 10).forEach((item, idx) => {
+        content += `  ${idx + 1}. ${item.name || 'N/A'} (ID: ${item.id})\n`
+      })
+      if (details.data_fetch.total_items > 10) {
+        content += `  ... and ${details.data_fetch.total_items - 10} more items\n`
+      }
+    }
+    content += `\n`
+  }
+
+  // Filtered Items
+  if (details.filtered_data && details.filtered_data.length > 0) {
+    content += `FILTERED ITEMS (${details.filtered_data.length})\n`
+    content += `------------------------------------------\n`
+    details.filtered_data.forEach((item, idx) => {
+      content += `${idx + 1}. ${item.name || 'N/A'}\n`
+      content += `   ID: ${item.id}\n`
+      content += `   Status: ${item.status || 'N/A'}\n`
+      content += `   Effective Status: ${item.effective_status || 'N/A'}\n`
+      content += `\n`
+    })
+  }
+
+  // Condition Evaluations
+  if (details.evaluations && details.evaluations.length > 0) {
+    content += `CONDITION EVALUATIONS\n`
+    content += `==========================================\n\n`
+
+    details.evaluations.forEach((evaluation, idx) => {
+      content += `ITEM ${idx + 1}: ${evaluation.item_name} (ID: ${evaluation.item_id})\n`
+      content += `------------------------------------------\n`
+
+      if (evaluation.conditions_evaluated && evaluation.conditions_evaluated.length > 0) {
+        evaluation.conditions_evaluated.forEach((cond, condIdx) => {
+          const status = cond.passed ? '✓ PASS' : '✗ FAIL'
+          content += `  Condition ${condIdx + 1}: ${status}\n`
+          content += `    Field: ${cond.field}\n`
+          content += `    Operator: ${cond.operator}\n`
+          content += `    Expected Value: ${cond.expected_value}\n`
+          content += `    Actual Value: ${cond.actual_value !== null && cond.actual_value !== undefined ? cond.actual_value : 'N/A'}\n`
+          content += `\n`
+        })
+      }
+
+      content += `  Overall Result: ${evaluation.all_conditions_met ? '✓ ALL CONDITIONS MET' : '✗ CONDITIONS NOT MET'}\n`
+      content += `\n\n`
+    })
+  }
+
+  // Items Meeting Conditions
+  if (details.items_meeting_conditions && details.items_meeting_conditions.length > 0) {
+    content += `ITEMS MEETING ALL CONDITIONS (${details.items_meeting_conditions.length})\n`
+    content += `------------------------------------------\n`
+    details.items_meeting_conditions.forEach((item, idx) => {
+      content += `${idx + 1}. ${item.name || 'N/A'} (ID: ${item.id})\n`
+    })
+    content += `\n`
+  }
+
+  // Actions Executed
+  if (details.actions_executed && details.actions_executed.length > 0) {
+    content += `ACTIONS EXECUTED (${details.actions_executed.length})\n`
+    content += `==========================================\n\n`
+    details.actions_executed.forEach((action, idx) => {
+      content += `ACTION ${idx + 1}\n`
+      content += `------------------------------------------\n`
+      content += `Item: ${action.item_name || 'N/A'} (ID: ${action.item_id})\n`
+      content += `Action Type: ${action.action_type}\n`
+      content += `Status: ${action.success ? 'SUCCESS' : 'FAILED'}\n`
+      content += `Message: ${action.message}\n`
+      if (action.old_budget !== undefined) {
+        content += `Old Budget: $${action.old_budget.toFixed(2)}\n`
+      }
+      if (action.new_budget !== undefined) {
+        content += `New Budget: $${action.new_budget.toFixed(2)}\n`
+      }
+      if (action.error) {
+        content += `Error: ${action.error}\n`
+      }
+      content += `\n`
+    })
+  }
+
+  // Conditions Configuration
+  if (details.conditions && details.conditions.length > 0) {
+    content += `CONDITIONS CONFIGURATION\n`
+    content += `------------------------------------------\n`
+    details.conditions.forEach((cond, idx) => {
+      content += `Condition ${idx + 1}:\n`
+      content += `  Field: ${cond.field}\n`
+      content += `  Operator: ${cond.operator}\n`
+      content += `  Value: ${cond.value}\n`
+      content += `\n`
+    })
+  }
+
+  // Error Information
+  if (details.error) {
+    content += `ERROR INFORMATION\n`
+    content += `------------------------------------------\n`
+    content += `${details.error}\n\n`
+  }
+
+  // Download as file
+  const blob = new Blob([content], { type: 'text/plain' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `rule-log-${logData.log_id}-${new Date(logData.timestamp).toISOString().split('T')[0]}.txt`
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+
+  toast.add({
+    severity: 'success',
+    summary: 'Download Started',
+    detail: 'Detailed log file is being downloaded',
+    life: 3000
+  })
+}
+
+function formatDate(date) {
+  if (!date) return 'Never'
+  return new Date(date).toLocaleString()
+}
+
+function getStatusSeverity(status) {
+  const map = {
+    success: 'success',
+    error: 'danger',
+    skipped: 'secondary'
+  }
+  return map[status] || 'secondary'
+}
+
+function getCampaignStatusSeverity(status) {
+  const map = {
+    ACTIVE: 'success',
+    PAUSED: 'secondary',
+    ARCHIVED: 'secondary',
+    DELETED: 'danger'
+  }
+  return map[status] || 'secondary'
+}
+</script>
+
+<style scoped>
+.meta-campaigns {
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+}
+
+.page-header h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.header-actions {
+  display: flex;
+  gap: 1rem;
+}
+
+.business-accounts-section {
+  margin-bottom: 3rem;
+}
+
+.business-accounts-section h2,
+.campaigns-section h2,
+.rules-section h2 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 1rem;
+}
+
+.campaigns-section {
+  margin-bottom: 3rem;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.accounts-table,
+.campaigns-table,
+.rules-table {
+  background: white;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.form-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.field label {
+  font-weight: 600;
+  color: #374151;
+}
+
+.field small {
+  color: #6b7280;
+  font-size: 0.875rem;
+}
+
+.access-token-field :deep(.p-password-input),
+.access-token-field :deep(.p-inputtext) {
+  min-height: 80px;
+  font-size: 0.9rem;
+  padding: 0.75rem;
+}
+
+.checkbox-field {
+  flex-direction: row;
+  align-items: center;
+}
+
+.checkbox-container {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.checkbox-label {
+  white-space: nowrap;
+  margin: 0;
+  font-weight: 600;
+  color: #374151;
+}
+
+.form-section {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 1.5rem;
+  background-color: #f9fafb;
+  margin-top: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.scheduling-section {
+  margin-top: 1rem;
+}
+
+.subsection {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e5e7eb;
+}
+
+.subsection:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+.subsection-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #374151;
+  margin: 0 0 1rem 0;
+}
+
+.section-title {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: #1f2937;
+  margin: 0 0 1.5rem 0;
+}
+
+.empty-scope,
+.empty-message {
+  padding: 1rem;
+  background-color: #f3f4f6;
+  border-radius: 6px;
+  color: #6b7280;
+  text-align: center;
+  margin-bottom: 1rem;
+}
+
+.scope-filters-list,
+.conditions-list,
+.actions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.scope-filter-item,
+.condition-item,
+.action-item {
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 1rem;
+  background-color: white;
+}
+
+.scope-filter-header,
+.condition-header,
+.action-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.scope-filter-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.condition-fields,
+.action-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.rule-builder-dialog :deep(.p-dialog-content) {
+  max-height: calc(90vh - 150px);
+  overflow-y: auto;
+}
+
+.section-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #1f2937;
+  margin: 0 0 1rem 0;
+}
+
+.p-error {
+  color: #ef4444;
+  font-size: 0.875rem;
+  margin-top: 0.25rem;
+}
+
+.p-text-secondary {
+  color: #6b7280;
+  font-size: 0.875rem;
+}
+
+.form-section {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 1.5rem;
+  background-color: #f9fafb;
+  margin-top: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.scheduling-section {
+  margin-top: 1rem;
+}
+
+.subsection {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e5e7eb;
+}
+
+.subsection:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+.subsection-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #374151;
+  margin: 0 0 1rem 0;
+}
+
+.empty-scope,
+.empty-message {
+  padding: 1rem;
+  background-color: #f3f4f6;
+  border-radius: 6px;
+  color: #6b7280;
+  text-align: center;
+  margin-bottom: 1rem;
+}
+
+.scope-filters-list,
+.conditions-list,
+.actions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.scope-filter-item,
+.condition-item,
+.action-item {
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 1rem;
+  background-color: white;
+}
+
+.scope-filter-header,
+.condition-header,
+.action-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.scope-filter-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.condition-fields,
+.action-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.rule-builder-dialog :deep(.p-dialog-content) {
+  max-height: calc(90vh - 150px);
+  overflow-y: auto;
+}
+
+.field-label {
+  margin: 0;
+  font-weight: 600;
+  color: #374151;
+}
+
+.log-details-content {
+  max-height: calc(90vh - 200px);
+  overflow-y: auto;
+}
+
+.log-section {
+  margin-bottom: 2rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.log-section:last-child {
+  border-bottom: none;
+}
+
+.log-section h4 {
+  margin: 0 0 0.75rem 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.log-section h5 {
+  margin: 1rem 0 0.5rem 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #374151;
+}
+
+.evaluation-item {
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background-color: #f9fafb;
+  border-radius: 6px;
+}
+
+.condition-result {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+}
+
+.condition-text {
+  font-family: monospace;
+  font-size: 0.9rem;
+}
+
+.condition-overall {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #e5e7eb;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.error-section pre {
+  background-color: #fee2e2;
+  padding: 1rem;
+  border-radius: 4px;
+  overflow-x: auto;
+  color: #991b1b;
+}
+
+.logs-dialog :deep(.p-dialog-content),
+.log-details-dialog :deep(.p-dialog-content) {
+  max-height: calc(90vh - 150px);
+  overflow-y: auto;
+}
+
+.log-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+</style>
