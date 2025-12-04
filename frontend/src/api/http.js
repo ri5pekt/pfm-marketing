@@ -1,4 +1,6 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api'
+// Use relative path in production (nginx will proxy /api to backend)
+// Use environment variable or localhost for development
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (import.meta.env.PROD ? '/api' : 'http://localhost:8000/api')
 
 function getAuthToken() {
   return localStorage.getItem('pfm_token')
