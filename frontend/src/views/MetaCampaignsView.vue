@@ -968,7 +968,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import { useConfirm } from 'primevue/useconfirm'
 import DataTable from 'primevue/datatable'
@@ -1196,6 +1196,8 @@ const availableActionTypes = computed(() => {
   return []
 })
 
+let rulesPollingInterval = null
+
 onMounted(async () => {
   await loadBusinessAccounts()
   // Select default account if available
@@ -1205,6 +1207,21 @@ onMounted(async () => {
     await loadRules()
   } catch (error) {
     // No default account yet
+  }
+
+  // Start polling for rules updates every 5 seconds (silent refresh)
+  rulesPollingInterval = setInterval(() => {
+    if (selectedAccount.value) {
+      loadRules(true) // silent = true to avoid loading indicator flicker
+    }
+  }, 5000)
+})
+
+onUnmounted(() => {
+  // Clear polling interval when component is unmounted
+  if (rulesPollingInterval) {
+    clearInterval(rulesPollingInterval)
+    rulesPollingInterval = null
   }
 })
 
@@ -1255,21 +1272,28 @@ async function loadCampaigns() {
   }
 }
 
-async function loadRules() {
+async function loadRules(silent = false) {
   if (!selectedAccount.value) return
 
-  loading.value = true
+  if (!silent) {
+    loading.value = true
+  }
   try {
     rules.value = await getRules(selectedAccount.value.id)
   } catch (error) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: 'Failed to load rules',
-      life: 5000
-    })
+    // Only show error toast if not silent (manual refresh)
+    if (!silent) {
+      toast.add({
+        severity: 'error',
+        summary: 'Error',
+        detail: 'Failed to load rules',
+        life: 5000
+      })
+    }
   } finally {
-    loading.value = false
+    if (!silent) {
+      loading.value = false
+    }
   }
 }
 

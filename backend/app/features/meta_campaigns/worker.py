@@ -2,6 +2,7 @@ from app.features.meta_campaigns import service
 from app.core.db import SessionLocal
 from app.jobs.queues import get_queue
 from datetime import datetime
+from croniter import croniter
 import logging
 
 logger = logging.getLogger(__name__)
@@ -30,8 +31,20 @@ def check_campaign_rule(rule_id: int):
 
         logger.info(f"Rule {rule_id} check completed: {result.get('decision', 'unknown')}")
 
-        # Update last_run_at
-        rule.last_run_at = datetime.now()
+        # Update last_run_at and calculate next_run_at
+        now = datetime.now()
+        rule.last_run_at = now
+
+        # Calculate next run time from cron expression
+        if rule.schedule_cron:
+            try:
+                cron = croniter(rule.schedule_cron, now)
+                next_run = cron.get_next(datetime)
+                rule.next_run_at = next_run
+                logger.info(f"Rule {rule_id} next run scheduled for {next_run}")
+            except Exception as e:
+                logger.error(f"Error calculating next run time for rule {rule_id}: {str(e)}")
+
         db.commit()
 
     except Exception as e:
