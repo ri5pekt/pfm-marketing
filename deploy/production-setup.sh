@@ -43,7 +43,7 @@ cat > /etc/nginx/sites-available/$DOMAIN << 'NGINX_EOF'
 server {
     listen 80;
     server_name marketing.pfm-qa.com;
-    
+
     # Redirect HTTP to HTTPS
     return 301 https://$server_name$request_uri;
 }
@@ -55,7 +55,7 @@ server {
     # SSL configuration (will be updated by certbot)
     ssl_certificate /etc/letsencrypt/live/marketing.pfm-qa.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/marketing.pfm-qa.com/privkey.pem;
-    
+
     # SSL settings
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers HIGH:!aNULL:!MD5;
@@ -76,7 +76,7 @@ server {
 
     # Backend API
     location /api {
-        proxy_pass http://localhost:8000;
+        proxy_pass http://localhost:8001/api;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -84,6 +84,8 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header Connection "";
         proxy_buffering off;
+        proxy_read_timeout 300s;
+        proxy_connect_timeout 75s;
     }
 
     # API Documentation

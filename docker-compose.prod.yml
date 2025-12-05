@@ -28,7 +28,7 @@ services:
   backend:
     build: ./backend
     ports:
-      - "127.0.0.1:8000:8000"  # Only bind to localhost
+      - "127.0.0.1:8001:8000"  # Only bind to localhost on port 8001 to avoid conflict with tools backend
     environment:
       SECRET_KEY: ${SECRET_KEY}
       DATABASE_URL: ${DATABASE_URL}
@@ -78,7 +78,7 @@ services:
     command: sh -c "python scheduler.py && exec python run_scheduler.py"
 
   frontend:
-    build: 
+    build:
       context: ./frontend
       dockerfile: Dockerfile
       args:
