@@ -12,6 +12,7 @@ class BusinessAccount(Base):
     description = Column(Text, nullable=True)
     meta_account_id = Column(String, nullable=True)
     meta_access_token = Column(String, nullable=True)  # Encrypted in production
+    slack_webhook_url = Column(String, nullable=True)  # Slack webhook URL for notifications
     is_default = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

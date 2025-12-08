@@ -3,6 +3,7 @@ from app.features.meta_campaigns import models, schemas
 from datetime import datetime, timedelta
 import requests
 import logging
+import time
 from typing import Dict, List, Any, Tuple
 
 logger = logging.getLogger(__name__)
@@ -431,9 +432,9 @@ def evaluate_condition(item: Dict, insights: Dict, condition: Dict) -> Tuple[boo
     # Handle daily_budget (from object data)
     elif field == "daily_budget":
         actual_value = item.get("daily_budget")
-        evaluation["actual_value"] = actual_value
         if actual_value is not None:
             actual_value = float(actual_value) / 100  # Convert cents to dollars
+            evaluation["actual_value"] = actual_value  # Store converted value (in dollars) for display
             expected_value = float(expected_value)
             if operator == ">":
                 evaluation["passed"] = actual_value > expected_value
@@ -447,6 +448,8 @@ def evaluate_condition(item: Dict, insights: Dict, condition: Dict) -> Tuple[boo
                 evaluation["passed"] = actual_value == expected_value
             elif operator == "!=":
                 evaluation["passed"] = actual_value != expected_value
+        else:
+            evaluation["actual_value"] = None
 
     # Handle metrics from insights
     else:
@@ -477,7 +480,100 @@ def evaluate_condition(item: Dict, insights: Dict, condition: Dict) -> Tuple[boo
     return evaluation["passed"], evaluation
 
 
-def execute_action(account_id: str, access_token: str, rule_level: str, items: List[Dict], action: Dict) -> List[Dict]:
+def send_slack_notification(webhook_url: str, rule_name: str, action_type: str, result: Dict) -> bool:
+    """
+    Send a Slack notification about an action execution result.
+
+    Args:
+        webhook_url: Slack webhook URL
+        rule_name: Name of the rule that triggered the action
+        action_type: Type of action (set_status, adjust_daily_budget)
+        result: Action result dictionary with success, message, item_name, etc.
+
+    Returns:
+        bool: True if notification was sent successfully, False otherwise
+    """
+    if not webhook_url:
+        return False
+
+    try:
+        # Determine color based on success
+        color = "good" if result.get("success") else "danger"
+
+        # Build message text
+        status_emoji = "✅" if result.get("success") else "❌"
+        item_name = result.get("item_name", "Unknown")
+        message = result.get("message", "")
+
+        # Format action type for display
+        action_display = action_type.replace("_", " ").title()
+        if action_type == "set_status":
+            action_display = f"Set Status: {result.get('message', '')}"
+        elif action_type == "adjust_daily_budget":
+            old_budget = result.get("old_budget")
+            new_budget = result.get("new_budget")
+            if old_budget is not None and new_budget is not None:
+                action_display = f"Budget Adjusted: ${old_budget:.2f} → ${new_budget:.2f}"
+        elif action_type == "send_notification":
+            action_display = "Notification: Rule conditions met"
+
+        # Create Slack message payload
+        payload = {
+            "attachments": [
+                {
+                    "color": color,
+                    "title": f"{status_emoji} Rule Action Executed: {rule_name}",
+                    "fields": [
+                        {
+                            "title": "Item",
+                            "value": item_name,
+                            "short": True
+                        },
+                        {
+                            "title": "Item ID",
+                            "value": result.get("item_id", "N/A"),
+                            "short": True
+                        },
+                        {
+                            "title": "Action",
+                            "value": action_display,
+                            "short": False
+                        },
+                        {
+                            "title": "Status",
+                            "value": "Success" if result.get("success") else "Failed",
+                            "short": True
+                        }
+                    ],
+                    "footer": "PFM Marketing Automation",
+                    "ts": int(time.time())
+                }
+            ]
+        }
+
+        # Add error field if action failed
+        if not result.get("success") and result.get("error"):
+            payload["attachments"][0]["fields"].append({
+                "title": "Error",
+                "value": result.get("error", "Unknown error")[:500],  # Limit error length
+                "short": False
+            })
+
+        # Send to Slack
+        response = requests.post(webhook_url, json=payload, timeout=10)
+        response.raise_for_status()
+        logger.info(f"Slack notification sent successfully for action on {item_name}")
+        return True
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Failed to send Slack notification: {str(e)}")
+        return False
+    except Exception as e:
+        logger.error(f"Unexpected error sending Slack notification: {str(e)}", exc_info=True)
+        return False
+
+
+def execute_action(account_id: str, access_token: str, rule_level: str, items: List[Dict], action: Dict, slack_webhook_url: str = None, rule_name: str = None) -> List[Dict]:
     """
     Execute an action on items via Meta API.
     Returns a list of action results with success/failure status.
@@ -486,7 +582,7 @@ def execute_action(account_id: str, access_token: str, rule_level: str, items: L
     results = []
     base_url = "https://graph.facebook.com/v21.0"
 
-    for item in items:
+    for index, item in enumerate(items):
         item_id = item.get("id")
         item_name = item.get("name", "Unknown")
         result = {
@@ -558,6 +654,13 @@ def execute_action(account_id: str, access_token: str, rule_level: str, items: L
                     result["message"] = "Budget adjustment only available for ad sets"
                     result["error"] = "Invalid rule level for budget adjustment"
                     logger.warning(f"Budget adjustment attempted on {rule_level} {item_id}, but only ad sets support budget adjustment")
+
+            elif action_type == "send_notification":
+                # Send notification action - no API call, just notification
+                result["success"] = True
+                result["message"] = "Notification sent (no changes made)"
+                logger.info(f"Send notification action for {rule_level} {item_id}: {item_name}")
+
             else:
                 result["success"] = False
                 result["message"] = f"Unknown action type: {action_type}"
@@ -584,6 +687,23 @@ def execute_action(account_id: str, access_token: str, rule_level: str, items: L
 
         results.append(result)
 
+        # Send Slack notification if enabled and webhook URL is provided
+        send_notification = action.get("send_slack_notification", True)  # Default to True if not specified
+        if send_notification and slack_webhook_url and rule_name:
+            # For send_notification action, customize the message
+            if action_type == "send_notification":
+                # Create a custom result for notification-only actions
+                notification_result = result.copy()
+                notification_result["message"] = f"Rule conditions met for {item_name}"
+                send_slack_notification(slack_webhook_url, rule_name, action_type, notification_result)
+            else:
+                send_slack_notification(slack_webhook_url, rule_name, action_type, result)
+
+        # Add delay between API calls to avoid rate limiting (except after the last item)
+        if index < len(items) - 1:
+            time.sleep(1.0)  # 1 second delay between calls to prevent rate limiting
+            logger.debug(f"Waiting 1 second before processing next item to avoid rate limiting")
+
     return results
 
 
@@ -609,6 +729,7 @@ def test_rule(db: Session, rule_id: int):
 
     account_id = rule.meta_account_id or business_account.meta_account_id
     access_token = rule.meta_access_token or business_account.meta_access_token
+    slack_webhook_url = business_account.slack_webhook_url
 
     if not account_id or not access_token:
         create_rule_log(db, rule_id, "error", "Meta account ID or access token missing", {})
@@ -715,7 +836,9 @@ def test_rule(db: Session, rule_id: int):
             for action in rule_actions:
                 action_results = execute_action(
                     account_id, access_token, rule_level,
-                    items_meeting_conditions, action
+                    items_meeting_conditions, action,
+                    slack_webhook_url=slack_webhook_url,
+                    rule_name=rule.name
                 )
                 actions_executed.extend(action_results)
 

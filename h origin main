@@ -1,0 +1,73 @@
+warning: in the working copy of 'deploy/nginx.conf', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'deploy/production-setup.sh', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/deploy/nginx.conf b/deploy/nginx.conf[m
+[1mindex 6460a0a..05d699b 100644[m
+[1m--- a/deploy/nginx.conf[m
+[1m+++ b/deploy/nginx.conf[m
+[36m@@ -1,7 +1,7 @@[m
+ server {[m
+     listen 80;[m
+     server_name marketing.pfm-qa.com;[m
+[31m-    [m
+[32m+[m
+     # Redirect HTTP to HTTPS[m
+     return 301 https://$server_name$request_uri;[m
+ }[m
+[36m@@ -13,7 +13,7 @@[m [mserver {[m
+     # SSL configuration (will be updated by certbot)[m
+     ssl_certificate /etc/letsencrypt/live/marketing.pfm-qa.com/fullchain.pem;[m
+     ssl_certificate_key /etc/letsencrypt/live/marketing.pfm-qa.com/privkey.pem;[m
+[31m-    [m
+[32m+[m
+     # SSL settings[m
+     ssl_protocols TLSv1.2 TLSv1.3;[m
+     ssl_ciphers HIGH:!aNULL:!MD5;[m
+[36m@@ -44,7 +44,7 @@[m [mserver {[m
+ [m
+     # Backend API[m
+     location /api {[m
+[31m-        proxy_pass http://localhost:8000;[m
+[32m+[m[32m        proxy_pass http://localhost:8000/api;[m
+         proxy_http_version 1.1;[m
+         proxy_set_header Host $host;[m
+         proxy_set_header X-Real-IP $remote_addr;[m
+[1mdiff --git a/deploy/production-setup.sh b/deploy/production-setup.sh[m
+[1mindex cbcedee..d55050e 100644[m
+[1m--- a/deploy/production-setup.sh[m
+[1m+++ b/deploy/production-setup.sh[m
+[36m@@ -43,7 +43,7 @@[m [mcat > /etc/nginx/sites-available/$DOMAIN << 'NGINX_EOF'[m
+ server {[m
+     listen 80;[m
+     server_name marketing.pfm-qa.com;[m
+[31m-    [m
+[32m+[m
+     # Redirect HTTP to HTTPS[m
+     return 301 https://$server_name$request_uri;[m
+ }[m
+[36m@@ -55,7 +55,7 @@[m [mserver {[m
+     # SSL configuration (will be updated by certbot)[m
+     ssl_certificate /etc/letsencrypt/live/marketing.pfm-qa.com/fullchain.pem;[m
+     ssl_certificate_key /etc/letsencrypt/live/marketing.pfm-qa.com/privkey.pem;[m
+[31m-    [m
+[32m+[m
+     # SSL settings[m
+     ssl_protocols TLSv1.2 TLSv1.3;[m
+     ssl_ciphers HIGH:!aNULL:!MD5;[m
+[36m@@ -76,7 +76,7 @@[m [mserver {[m
+ [m
+     # Backend API[m
+     location /api {[m
+[31m-        proxy_pass http://localhost:8000;[m
+[32m+[m[32m        proxy_pass http://localhost:8000/api;[m
+         proxy_http_version 1.1;[m
+         proxy_set_header Host $host;[m
+         proxy_set_header X-Real-IP $remote_addr;[m
+[36m@@ -84,6 +84,8 @@[m [mserver {[m
+         proxy_set_header X-Forwarded-Proto $scheme;[m
+         proxy_set_header Connection "";[m
+         proxy_buffering off;[m
+[32m+[m[32m        proxy_read_timeout 300s;[m
+[32m+[m[32m        proxy_connect_timeout 75s;[m
+     }[m
+ [m
+     # API Documentation[m

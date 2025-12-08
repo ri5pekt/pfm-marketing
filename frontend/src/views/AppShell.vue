@@ -3,11 +3,11 @@
     <header class="app-header">
       <div class="header-left">
         <div class="logo">
-          <i class="pi pi-chart-line"></i>
+          <i class="pi pi-megaphone"></i>
         </div>
         <div class="app-title">
           <h2>PFM Marketing</h2>
-          <span class="version">v1.0.0</span>
+          <span class="version">v{{ APP_VERSION }}</span>
         </div>
       </div>
       <div class="header-right">
@@ -59,6 +59,7 @@ import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import Button from 'primevue/button'
 import { useAuthStore } from '@/store/authStore'
+import { APP_VERSION } from '@/config/version'
 
 const router = useRouter()
 const toast = useToast()

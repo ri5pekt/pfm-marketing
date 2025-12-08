@@ -8,6 +8,7 @@ class BusinessAccountBase(BaseModel):
     description: Optional[str] = None
     meta_account_id: Optional[str] = None
     meta_access_token: Optional[str] = None
+    slack_webhook_url: Optional[str] = None
     is_default: bool = False
 
 
@@ -20,6 +21,7 @@ class BusinessAccountUpdate(BaseModel):
     description: Optional[str] = None
     meta_account_id: Optional[str] = None
     meta_access_token: Optional[str] = None
+    slack_webhook_url: Optional[str] = None
     is_default: Optional[bool] = None
 
 
