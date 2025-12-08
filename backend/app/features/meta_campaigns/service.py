@@ -137,7 +137,7 @@ def fetch_insights(account_id: str, access_token: str, rule_level: str, ids: Lis
     time_range_str = build_time_range_string(time_range)
 
     # Fields to fetch
-    fields = "campaign_id,adset_id,ad_id,spend,impressions,clicks,cpc,cpm,ctr,actions"
+    fields = "campaign_id,adset_id,ad_id,spend,impressions,clicks,cpc,cpm,ctr,actions,cost_per_action_type"
 
     if rule_level == "ad":
         level = "ad"
@@ -156,14 +156,17 @@ def fetch_insights(account_id: str, access_token: str, rule_level: str, ids: Lis
         ids_str = ",".join(batch_ids)
 
         # Build filtering JSON string
-        # Facebook API v21.0+ requires ad.id instead of ad_id for ad level filtering
+        # Facebook API v21.0+ requires specific filter fields for each level
         if level == "ad":
             filter_field = "ad.id"
-        else:
-            filter_field = f"{level}_id"
+        elif level == "adset":
+            filter_field = "adset.id"
+        else:  # campaign
+            filter_field = "campaign.id"
         filtering = f"[{{\"field\":\"{filter_field}\",\"operator\":\"IN\",\"value\":[{','.join([f'\"{id_val}\"' for id_val in batch_ids])}]}}]"
 
-        url = f"{endpoint}?level={level}&fields={fields}&time_range={time_range_str}&filtering={filtering}&access_token={access_token}"
+        # Add action_breakdowns parameter to get cost_per_action_type properly populated
+        url = f"{endpoint}?level={level}&fields={fields}&time_range={time_range_str}&filtering={filtering}&action_breakdowns=action_type&access_token={access_token}"
         logger.info(f"Fetching insights: level={level}, time_range={time_range_str}, batch_size={len(batch_ids)}")
 
         try:
@@ -175,6 +178,11 @@ def fetch_insights(account_id: str, access_token: str, rule_level: str, ids: Lis
                 # Log first insight to see structure
                 first_insight = data["data"][0]
                 logger.info(f"Sample insight structure: {list(first_insight.keys())}, spend={first_insight.get('spend')}, impressions={first_insight.get('impressions')}")
+                # Log cost_per_action_type if present
+                if "cost_per_action_type" in first_insight:
+                    logger.info(f"cost_per_action_type sample: {first_insight.get('cost_per_action_type')}")
+                else:
+                    logger.warning(f"cost_per_action_type not found in insights response. Available fields: {list(first_insight.keys())}")
             if data.get("data"):
                 for insight in data["data"]:
                     obj_id = insight.get(f"{level}_id") or insight.get("id")
@@ -352,15 +360,66 @@ def calculate_metric_from_insights(insights: Dict, field: str) -> float:
         except (ValueError, TypeError):
             return default
 
-    if field == "cpa":
+    if field == "cpp":
+        # Try to extract cost_per_purchase from cost_per_action_type array first
+        cost_per_action_type = insights.get("cost_per_action_type", [])
+        logger.debug(f"cost_per_action_type for cpp: {cost_per_action_type}, type: {type(cost_per_action_type)}")
+
+        if cost_per_action_type:
+            # Find the purchase action in the array
+            # Facebook API can return various purchase action types: "purchase", "offsite_conversion.fb_pixel_purchase",
+            # "onsite_web_purchase", "omni_purchase", "web_in_store_purchase", etc.
+            purchase_action_types = ["purchase", "offsite_conversion.fb_pixel_purchase", "onsite_web_purchase",
+                                   "omni_purchase", "web_in_store_purchase", "web_app_in_store_purchase"]
+            for action_cost in cost_per_action_type:
+                if isinstance(action_cost, dict):
+                    action_type = action_cost.get("action_type", "")
+                    logger.debug(f"Checking action_type: {action_type}, action_cost: {action_cost}")
+                    # Check for any purchase action type
+                    if action_type in purchase_action_types or "purchase" in action_type.lower():
+                        cpp_value = action_cost.get("value")
+                        logger.debug(f"Found purchase action ({action_type}), value: {cpp_value}")
+                        if cpp_value:
+                            # cost_per_action_type value might come as a string with currency or as a number
+                            cpp_str = str(cpp_value).replace("$", "").replace(",", "")
+                            result = safe_float(cpp_str, 0)
+                            logger.debug(f"Calculated CPP from cost_per_action_type: {result}")
+                            return result
+
+        # Fallback: Try cost_per_result if available (for purchase-optimized campaigns)
+        cost_per_result = insights.get("cost_per_result", [])
+        if cost_per_result and isinstance(cost_per_result, list):
+            for result_item in cost_per_result:
+                if isinstance(result_item, dict):
+                    indicator = result_item.get("indicator", "")
+                    # Check if it's a purchase-related result
+                    if "purchase" in indicator.lower():
+                        values = result_item.get("values", [])
+                        if values and isinstance(values, list) and len(values) > 0:
+                            cpp_value = values[0].get("value")
+                            if cpp_value:
+                                cpp_str = str(cpp_value).replace("$", "").replace(",", "")
+                                result = safe_float(cpp_str, 0)
+                                logger.debug(f"Calculated CPP from cost_per_result: {result}")
+                                return result
+
+        # Fallback: Calculate from spend and purchase actions if cost_per_action_type is not available
+        logger.debug(f"cost_per_action_type not available, falling back to calculation from spend and actions")
         spend = safe_float(insights.get("spend"), 0)
         actions = insights.get("actions", [])
-        conversions = 0
+        purchases = 0
         if actions:
             for action in actions:
-                if isinstance(action, dict) and action.get("action_type") in ["purchase", "complete_registration", "lead"]:
-                    conversions += safe_float(action.get("value"), 0)
-        return spend / conversions if conversions > 0 else 0
+                if isinstance(action, dict) and action.get("action_type") == "purchase":
+                    purchases += safe_float(action.get("value"), 0)
+
+        if purchases > 0:
+            result = spend / purchases
+            logger.debug(f"Calculated CPP from spend/purchases: spend={spend}, purchases={purchases}, cpp={result}")
+            return result
+        else:
+            logger.debug(f"No purchases found. spend={spend}, actions={actions}")
+            return 0
     elif field == "spend":
         return safe_float(insights.get("spend"), 0)
     elif field == "conversions":

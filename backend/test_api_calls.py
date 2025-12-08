@@ -154,7 +154,7 @@ def test_insights_api(account_id, access_token):
         print(f"Time range calculation: {start_time.strftime('%Y-%m-%d')} to {end_time.strftime('%Y-%m-%d')} = {days_count} days")
 
         # Fields to fetch
-        fields = "campaign_id,adset_id,ad_id,spend,impressions,clicks,cpc,cpm,ctr,actions"
+        fields = "campaign_id,adset_id,ad_id,spend,impressions,clicks,cpc,cpm,ctr,actions,cost_per_action_type"
 
         # Use the correct filter field (ad.id instead of ad_id)
         filter_field = "ad.id"
@@ -206,6 +206,15 @@ def test_insights_api(account_id, access_token):
 
                 if "actions" in sample_insight:
                     print(f"\nactions: {sample_insight['actions']}")
+
+                if "cost_per_action_type" in sample_insight:
+                    print(f"\ncost_per_action_type: {sample_insight['cost_per_action_type']}")
+                    print(f"cost_per_action_type type: {type(sample_insight['cost_per_action_type'])}")
+                    if isinstance(sample_insight['cost_per_action_type'], list):
+                        for item in sample_insight['cost_per_action_type']:
+                            print(f"  - {item}")
+                else:
+                    print("\n⚠️  cost_per_action_type field not found in response")
             else:
                 print("⚠️  No insights returned (ads may have no performance data)")
         else:

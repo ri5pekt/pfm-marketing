@@ -1323,7 +1323,7 @@ const operatorOptions = [
 
 // Condition fields for Ad level
 const adConditionFields = [
-    { label: "CPA", value: "cpa" },
+    { label: "Cost Per Purchase", value: "cpp" },
     { label: "Spend", value: "spend" },
     { label: "Conversions", value: "conversions" },
     { label: "CTR", value: "ctr" },
@@ -1334,7 +1334,7 @@ const adConditionFields = [
 
 // Condition fields for Ad Set level
 const adSetConditionFields = [
-    { label: "CPA", value: "cpa" },
+    { label: "Cost Per Purchase", value: "cpp" },
     { label: "Spend", value: "spend" },
     { label: "Conversions", value: "conversions" },
     { label: "ROAS", value: "roas" },
@@ -1344,7 +1344,7 @@ const adSetConditionFields = [
 
 // Condition fields for Campaign level
 const campaignConditionFields = [
-    { label: "CPA", value: "cpa" },
+    { label: "Cost Per Purchase", value: "cpp" },
     { label: "Spend", value: "spend" },
     { label: "Conversions", value: "conversions" },
     { label: "ROAS", value: "roas" },
@@ -1625,7 +1625,7 @@ function removeScopeFilter(index) {
 
 // Helper functions for conditions
 function isNumericField(field) {
-    const numericFields = ["cpa", "spend", "conversions", "ctr", "cpc", "cpm", "roas", "daily_budget"];
+    const numericFields = ["cpp", "spend", "conversions", "ctr", "cpc", "cpm", "roas", "daily_budget"];
     return numericFields.includes(field);
 }
 
