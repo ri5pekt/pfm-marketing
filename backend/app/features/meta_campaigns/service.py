@@ -686,28 +686,50 @@ def execute_action(account_id: str, access_token: str, rule_level: str, items: L
 
                     if direction == "increase":
                         new_budget = current_budget * (1 + percent / 100)
+                        # Check if increase would exceed max cap - if so, skip the action
+                        if max_cap is not None and new_budget > float(max_cap):
+                            result["success"] = False
+                            result["message"] = f"Budget increase would exceed max cap (${max_cap:.2f}). Current: ${current_budget:.2f}, Would be: ${new_budget:.2f}. Action skipped."
+                            result["old_budget"] = current_budget
+                            result["new_budget"] = current_budget
+                            logger.info(f"Skipping budget increase for adset {item_id}: would exceed max cap ${max_cap:.2f} (current: ${current_budget:.2f}, would be: ${new_budget:.2f})")
+                        else:
+                            # Update budget (in cents)
+                            url = f"{base_url}/{item_id}"
+                            params = {
+                                "daily_budget": int(new_budget * 100),
+                                "access_token": access_token
+                            }
+                            response = requests.post(url, params=params, timeout=30)
+                            response.raise_for_status()
+                            result["success"] = True
+                            result["message"] = f"Budget adjusted from ${current_budget:.2f} to ${new_budget:.2f}"
+                            result["old_budget"] = current_budget
+                            result["new_budget"] = new_budget
+                            logger.info(f"Successfully adjusted budget for adset {item_id}: ${current_budget:.2f} -> ${new_budget:.2f}")
                     else:  # decrease
                         new_budget = current_budget * (1 - percent / 100)
-
-                    # Apply caps
-                    if min_cap is not None:
-                        new_budget = max(new_budget, float(min_cap))
-                    if max_cap is not None:
-                        new_budget = min(new_budget, float(max_cap))
-
-                    # Update budget (in cents)
-                    url = f"{base_url}/{item_id}"
-                    params = {
-                        "daily_budget": int(new_budget * 100),
-                        "access_token": access_token
-                    }
-                    response = requests.post(url, params=params, timeout=30)
-                    response.raise_for_status()
-                    result["success"] = True
-                    result["message"] = f"Budget adjusted from ${current_budget:.2f} to ${new_budget:.2f}"
-                    result["old_budget"] = current_budget
-                    result["new_budget"] = new_budget
-                    logger.info(f"Successfully adjusted budget for adset {item_id}: ${current_budget:.2f} -> ${new_budget:.2f}")
+                        # Check if decrease would go below min cap - if so, skip the action
+                        if min_cap is not None and new_budget < float(min_cap):
+                            result["success"] = False
+                            result["message"] = f"Budget decrease would go below min cap (${min_cap:.2f}). Current: ${current_budget:.2f}, Would be: ${new_budget:.2f}. Action skipped."
+                            result["old_budget"] = current_budget
+                            result["new_budget"] = current_budget
+                            logger.info(f"Skipping budget decrease for adset {item_id}: would go below min cap ${min_cap:.2f} (current: ${current_budget:.2f}, would be: ${new_budget:.2f})")
+                        else:
+                            # Update budget (in cents)
+                            url = f"{base_url}/{item_id}"
+                            params = {
+                                "daily_budget": int(new_budget * 100),
+                                "access_token": access_token
+                            }
+                            response = requests.post(url, params=params, timeout=30)
+                            response.raise_for_status()
+                            result["success"] = True
+                            result["message"] = f"Budget adjusted from ${current_budget:.2f} to ${new_budget:.2f}"
+                            result["old_budget"] = current_budget
+                            result["new_budget"] = new_budget
+                            logger.info(f"Successfully adjusted budget for adset {item_id}: ${current_budget:.2f} -> ${new_budget:.2f}")
                 else:
                     result["success"] = False
                     result["message"] = "Budget adjustment only available for ad sets"
