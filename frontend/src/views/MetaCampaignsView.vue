@@ -71,9 +71,21 @@
                 :rowsPerPageOptions="[10, 20, 50]"
                 class="rules-table"
             >
-                <Column field="name" header="Name" sortable />
-                <Column field="description" header="Description" />
-                <Column field="schedule_cron" header="Schedule" />
+                <Column field="name" header="Name" sortable>
+                    <template #body="slotProps">
+                        <div class="name-column">
+                            <div class="name-text">{{ slotProps.data.name }}</div>
+                            <div v-if="slotProps.data.description" class="description-text">
+                                {{ slotProps.data.description }}
+                            </div>
+                        </div>
+                    </template>
+                </Column>
+                <Column field="schedule_cron" header="Schedule">
+                    <template #body="slotProps">
+                        {{ formatSchedule(slotProps.data.schedule_cron) }}
+                    </template>
+                </Column>
                 <Column field="enabled" header="Status">
                     <template #body="slotProps">
                         <Tag
@@ -84,13 +96,17 @@
                 </Column>
                 <Column field="last_run_at" header="Last Run">
                     <template #body="slotProps">
-                        {{ formatDate(slotProps.data.last_run_at) }}
+                        <span class="run-time-text">
+                            {{ formatDateWithTimezone(slotProps.data.last_run_at, slotProps.data.schedule_cron) }}
+                        </span>
                     </template>
                 </Column>
                 <Column field="next_run_at" header="Next Run">
                     <template #body="slotProps">
-                        <span v-if="slotProps.data.schedule_cron">{{ formatDate(slotProps.data.next_run_at) }}</span>
-                        <span v-else class="text-secondary">N/A</span>
+                        <span v-if="slotProps.data.schedule_cron" class="run-time-text">
+                            {{ formatDateWithTimezone(slotProps.data.next_run_at, slotProps.data.schedule_cron) }}
+                        </span>
+                        <span v-else class="text-secondary run-time-text">N/A</span>
                     </template>
                 </Column>
                 <Column header="Actions">
@@ -204,7 +220,7 @@
         >
             <div class="form-content">
                 <!-- SECTION 1: BASIC INFO -->
-                <div v-if="ruleForm.ruleLevel" class="form-section">
+                <div class="form-section">
                     <h3 class="section-title">1. Basic Info</h3>
                     <div class="field">
                         <label>Rule Name *</label>
@@ -215,7 +231,7 @@
                         <label>Description</label>
                         <Textarea v-model="ruleForm.description" class="w-full" rows="3" />
                     </div>
-                    <div class="field">
+                    <div v-if="ruleForm.ruleLevel" class="field">
                         <div class="flex align-items-center gap-2">
                             <InputSwitch v-model="ruleForm.enabled" inputId="enabled" />
                             <label for="enabled" class="field-label">Enabled</label>
@@ -2056,8 +2072,12 @@ function buildCronExpression() {
                 }
             }
         });
-        // Store as JSON string with prefix to identify it
-        return JSON.stringify({ type: "custom_daily", schedule: schedule });
+        // Store as JSON string with prefix to identify it, including timezone
+        return JSON.stringify({
+            type: "custom_daily",
+            schedule: schedule,
+            timezone: ruleForm.value.scheduleTimezone || "UTC",
+        });
     }
 
     let cron = "";
@@ -2130,7 +2150,7 @@ function parseCronExpression(cron) {
                 time: null,
                 dayOfWeek: null,
                 dayOfMonth: null,
-                timezone: "UTC",
+                timezone: parsed.timezone || "UTC",
                 customDailySchedule: customSchedule,
             };
         }
@@ -2937,6 +2957,134 @@ function formatDate(date) {
     return new Date(date).toLocaleString();
 }
 
+function getTimezoneFromSchedule(scheduleCron) {
+    if (!scheduleCron) return null;
+    try {
+        const parsed = JSON.parse(scheduleCron);
+        if (parsed.type === "custom_daily" && parsed.timezone) {
+            return parsed.timezone;
+        }
+    } catch (e) {
+        // Not JSON, return null
+    }
+    return null;
+}
+
+function formatDateWithTimezone(date, scheduleCron) {
+    if (!date) return "Never";
+    const timezone = getTimezoneFromSchedule(scheduleCron);
+    const dateObj = new Date(date);
+
+    if (timezone) {
+        // Format with timezone information - date is stored in UTC, display in schedule's timezone
+        const options = {
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+            timeZone: timezone,
+            hour12: false,
+        };
+        const formatted = dateObj.toLocaleString("en-US", options);
+        // Extract timezone abbreviation or use the timezone name
+        const tzAbbr =
+            new Intl.DateTimeFormat("en-US", {
+                timeZone: timezone,
+                timeZoneName: "short",
+            })
+                .formatToParts(dateObj)
+                .find((part) => part.type === "timeZoneName")?.value || timezone;
+        return `${formatted} (${tzAbbr})`;
+    } else {
+        // Default formatting without timezone
+        return dateObj.toLocaleString();
+    }
+}
+
+function formatSchedule(scheduleCron) {
+    if (!scheduleCron) return "Manual only";
+
+    // Check if it's a custom daily schedule (JSON format)
+    try {
+        const parsed = JSON.parse(scheduleCron);
+        if (parsed.type === "custom_daily" && parsed.schedule) {
+            const schedule = parsed.schedule;
+            const timezone = parsed.timezone || "UTC";
+
+            // Build human-readable schedule
+            const scheduleParts = [];
+            const sortedDays = Object.keys(schedule)
+                .map(Number)
+                .sort((a, b) => a - b);
+
+            for (const dayNum of sortedDays) {
+                const dayName = weekDays.find((d) => d.value === dayNum)?.label || `Day ${dayNum}`;
+                const time = schedule[dayNum.toString()];
+                scheduleParts.push(`${dayName} at ${time}`);
+            }
+
+            if (scheduleParts.length === 0) {
+                return "No schedule set";
+            }
+
+            const scheduleText = scheduleParts.join(", ");
+            return timezone !== "UTC" ? `${scheduleText} (${timezone})` : scheduleText;
+        }
+    } catch (e) {
+        // Not JSON, continue with cron parsing
+    }
+
+    // Try to parse as regular cron expression
+    const parts = scheduleCron.trim().split(/\s+/);
+    if (parts.length === 5) {
+        const [minute, hour, dayOfMonth, month, dayOfWeek] = parts;
+
+        // Every X minutes
+        if (minute.startsWith("*/")) {
+            const freq = minute.substring(2);
+            return `Every ${freq} minute${freq !== "1" ? "s" : ""}`;
+        }
+
+        // Every X hours
+        if (hour.startsWith("*/") && minute !== "*" && !minute.startsWith("*/")) {
+            const freq = hour.substring(2);
+            return `Every ${freq} hour${freq !== "1" ? "s" : ""} at :${minute.padStart(2, "0")}`;
+        }
+
+        // Daily at specific time
+        if (dayOfMonth === "*" && month === "*" && dayOfWeek === "*" && hour !== "*" && minute !== "*") {
+            const time = `${hour.padStart(2, "0")}:${minute.padStart(2, "0")}`;
+            if (dayOfMonth.startsWith("*/")) {
+                const freq = dayOfMonth.substring(2);
+                return `Every ${freq} day${freq !== "1" ? "s" : ""} at ${time}`;
+            }
+            return `Daily at ${time}`;
+        }
+
+        // Weekly on specific day
+        if (dayOfWeek !== "*" && month === "*" && dayOfMonth === "*" && hour !== "*" && minute !== "*") {
+            const dayName = weekDays.find((d) => d.value === parseInt(dayOfWeek))?.label || `Day ${dayOfWeek}`;
+            const time = `${hour.padStart(2, "0")}:${minute.padStart(2, "0")}`;
+            return `Every ${dayName} at ${time}`;
+        }
+
+        // Monthly on specific day
+        if (dayOfMonth !== "*" && month === "*" && dayOfWeek === "*" && hour !== "*" && minute !== "*") {
+            const time = `${hour.padStart(2, "0")}:${minute.padStart(2, "0")}`;
+            if (month.startsWith("*/")) {
+                const freq = month.substring(2);
+                return `Every ${freq} month${freq !== "1" ? "s" : ""} on day ${dayOfMonth} at ${time}`;
+            }
+            return `Monthly on day ${dayOfMonth} at ${time}`;
+        }
+    }
+
+    // Fallback: return the cron expression as-is
+    return scheduleCron;
+}
+
 function getStatusSeverity(status) {
     const map = {
         success: "success",
@@ -2995,6 +3143,27 @@ function getStatusSeverity(status) {
     background: white;
     border-radius: 8px;
     overflow: hidden;
+}
+
+.name-column {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.name-text {
+    font-weight: 600;
+    color: #1f2937;
+}
+
+.description-text {
+    font-size: 0.875rem;
+    color: #6b7280;
+    line-height: 1.4;
+}
+
+.run-time-text {
+    font-size: 0.875rem;
 }
 
 .action-buttons {
