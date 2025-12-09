@@ -24,7 +24,7 @@ if os.getenv("ENVIRONMENT") != "production":
     except Exception as e:
         print(f"Note: Could not create default business account: {e}")
 
-app = FastAPI(title="PFM Marketing API", version="1.1.4")
+app = FastAPI(title="PFM Marketing API", version="1.1.5")
 
 # CORS configuration
 if isinstance(settings.BACKEND_CORS_ORIGINS, str):

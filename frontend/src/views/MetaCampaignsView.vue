@@ -2985,11 +2985,12 @@ function getTimezoneFromSchedule(scheduleCron) {
     if (!scheduleCron) return null;
     try {
         const parsed = JSON.parse(scheduleCron);
-        if (parsed.type === "custom_daily" && parsed.timezone) {
+        // All schedule types now support timezone in JSON format
+        if (parsed.timezone) {
             return parsed.timezone;
         }
     } catch (e) {
-        // Not JSON, return null
+        // Not JSON, return null (legacy format defaults to UTC)
     }
     return null;
 }
@@ -3030,12 +3031,17 @@ function formatDateWithTimezone(date, scheduleCron) {
 function formatSchedule(scheduleCron) {
     if (!scheduleCron) return "Manual only";
 
-    // Check if it's a custom daily schedule (JSON format)
+    let cronExpr = scheduleCron;
+    let timezone = "UTC";
+
+    // Check if it's a JSON-wrapped schedule (all schedule types now support timezone)
     try {
         const parsed = JSON.parse(scheduleCron);
+
+        // Handle custom daily schedule
         if (parsed.type === "custom_daily" && parsed.schedule) {
             const schedule = parsed.schedule;
-            const timezone = parsed.timezone || "UTC";
+            timezone = parsed.timezone || "UTC";
 
             // Build human-readable schedule
             const scheduleParts = [];
@@ -3056,25 +3062,33 @@ function formatSchedule(scheduleCron) {
             const scheduleText = scheduleParts.join(", ");
             return timezone !== "UTC" ? `${scheduleText} (${timezone})` : scheduleText;
         }
+
+        // Handle other JSON-wrapped schedule types (daily, weekly, monthly, etc.)
+        if (parsed.type && parsed.cron) {
+            cronExpr = parsed.cron;
+            timezone = parsed.timezone || "UTC";
+        }
     } catch (e) {
-        // Not JSON, continue with cron parsing
+        // Not JSON, use as-is (legacy format)
     }
 
     // Try to parse as regular cron expression
-    const parts = scheduleCron.trim().split(/\s+/);
+    const parts = cronExpr.trim().split(/\s+/);
     if (parts.length === 5) {
         const [minute, hour, dayOfMonth, month, dayOfWeek] = parts;
 
         // Every X minutes
         if (minute.startsWith("*/")) {
             const freq = minute.substring(2);
-            return `Every ${freq} minute${freq !== "1" ? "s" : ""}`;
+            const scheduleText = `Every ${freq} minute${freq !== "1" ? "s" : ""}`;
+            return timezone !== "UTC" ? `${scheduleText} (${timezone})` : scheduleText;
         }
 
         // Every X hours
         if (hour.startsWith("*/") && minute !== "*" && !minute.startsWith("*/")) {
             const freq = hour.substring(2);
-            return `Every ${freq} hour${freq !== "1" ? "s" : ""} at :${minute.padStart(2, "0")}`;
+            const scheduleText = `Every ${freq} hour${freq !== "1" ? "s" : ""} at :${minute.padStart(2, "0")}`;
+            return timezone !== "UTC" ? `${scheduleText} (${timezone})` : scheduleText;
         }
 
         // Daily at specific time
@@ -3082,26 +3096,32 @@ function formatSchedule(scheduleCron) {
             const time = `${hour.padStart(2, "0")}:${minute.padStart(2, "0")}`;
             if (dayOfMonth.startsWith("*/")) {
                 const freq = dayOfMonth.substring(2);
-                return `Every ${freq} day${freq !== "1" ? "s" : ""} at ${time}`;
+                const scheduleText = `Every ${freq} day${freq !== "1" ? "s" : ""} at ${time}`;
+                return timezone !== "UTC" ? `${scheduleText} (${timezone})` : scheduleText;
             }
-            return `Daily at ${time}`;
+            const scheduleText = `Daily at ${time}`;
+            return timezone !== "UTC" ? `${scheduleText} (${timezone})` : scheduleText;
         }
 
         // Weekly on specific day
         if (dayOfWeek !== "*" && month === "*" && dayOfMonth === "*" && hour !== "*" && minute !== "*") {
             const dayName = weekDays.find((d) => d.value === parseInt(dayOfWeek))?.label || `Day ${dayOfWeek}`;
             const time = `${hour.padStart(2, "0")}:${minute.padStart(2, "0")}`;
-            return `Every ${dayName} at ${time}`;
+            const scheduleText = `Every ${dayName} at ${time}`;
+            return timezone !== "UTC" ? `${scheduleText} (${timezone})` : scheduleText;
         }
 
         // Monthly on specific day
         if (dayOfMonth !== "*" && month === "*" && dayOfWeek === "*" && hour !== "*" && minute !== "*") {
             const time = `${hour.padStart(2, "0")}:${minute.padStart(2, "0")}`;
+            let scheduleText;
             if (month.startsWith("*/")) {
                 const freq = month.substring(2);
-                return `Every ${freq} month${freq !== "1" ? "s" : ""} on day ${dayOfMonth} at ${time}`;
+                scheduleText = `Every ${freq} month${freq !== "1" ? "s" : ""} on day ${dayOfMonth} at ${time}`;
+            } else {
+                scheduleText = `Monthly on day ${dayOfMonth} at ${time}`;
             }
-            return `Monthly on day ${dayOfMonth} at ${time}`;
+            return timezone !== "UTC" ? `${scheduleText} (${timezone})` : scheduleText;
         }
     }
 
