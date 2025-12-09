@@ -2119,7 +2119,14 @@ function buildCronExpression() {
         }
     }
 
-    return cron;
+    // Wrap all schedule types in JSON to include timezone (ensures timezone is always preserved)
+    const timezone = ruleForm.value.scheduleTimezone || "UTC";
+    // Always use JSON format to ensure timezone is preserved for all schedule types
+    return JSON.stringify({
+        type: schedulePeriod,
+        cron: cron,
+        timezone: timezone,
+    });
 }
 
 function parseCronExpression(cron) {
@@ -2135,9 +2142,11 @@ function parseCronExpression(cron) {
         };
     }
 
-    // Check if it's a custom daily schedule (JSON format)
+    // Check if it's a JSON-wrapped schedule (all schedule types now support timezone)
     try {
         const parsed = JSON.parse(cron);
+
+        // Handle custom daily schedule
         if (parsed.type === "custom_daily" && parsed.schedule) {
             const customSchedule = {};
             Object.keys(parsed.schedule).forEach((dayValue) => {
@@ -2154,10 +2163,25 @@ function parseCronExpression(cron) {
                 customDailySchedule: customSchedule,
             };
         }
+
+        // Handle other schedule types wrapped in JSON (with timezone support)
+        if (parsed.type && parsed.cron) {
+            // Parse the cron expression to extract schedule details (parse only the cron part, not recursively)
+            const cronParsed = parseCronStringOnly(parsed.cron);
+            // Override timezone from JSON wrapper
+            cronParsed.timezone = parsed.timezone || "UTC";
+            return cronParsed;
+        }
     } catch (e) {
-        // Not JSON, continue with cron parsing
+        // Not JSON, continue with legacy cron parsing (defaults to UTC)
     }
 
+    // If we get here, it's a legacy plain cron string - parse it
+    return parseCronStringOnly(cron);
+}
+
+function parseCronStringOnly(cron) {
+    // Helper function to parse just the cron string part (not JSON-wrapped)
     const parts = cron.split(/\s+/);
     if (parts.length !== 5) {
         return {
@@ -2230,7 +2254,7 @@ function parseCronExpression(cron) {
         time,
         dayOfWeek: parsedDayOfWeek,
         dayOfMonth: parsedDayOfMonth,
-        timezone: "UTC",
+        timezone: "UTC", // Legacy cron expressions default to UTC
         customDailySchedule: {},
     };
 }

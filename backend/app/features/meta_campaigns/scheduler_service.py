@@ -95,28 +95,68 @@ def schedule_rule(rule: models.CampaignRule):
         return None
 
     try:
-        # Check if it's a custom daily schedule (JSON format)
+        # Check if it's a JSON-wrapped schedule (all schedule types now support timezone)
+        schedule_cron_str = rule.schedule_cron
+        timezone = "UTC"
+        cron_expr = None
+
         try:
             schedule_data = json.loads(rule.schedule_cron)
+
+            # Handle custom daily schedule
             if schedule_data.get("type") == "custom_daily" and schedule_data.get("schedule"):
                 timezone = schedule_data.get("timezone", "UTC")
                 return schedule_custom_daily_rule(rule, schedule_data["schedule"], timezone)
-        except (json.JSONDecodeError, KeyError, TypeError):
-            # Not JSON, continue with regular cron parsing
-            pass
 
-        # Parse cron expression and get next run time
-        cron = croniter(rule.schedule_cron, datetime.now())
-        next_run = cron.get_next(datetime)
+            # Handle other schedule types wrapped in JSON (with timezone support)
+            if schedule_data.get("type") and schedule_data.get("cron"):
+                cron_expr = schedule_data.get("cron")
+                timezone = schedule_data.get("timezone", "UTC")
+        except (json.JSONDecodeError, KeyError, TypeError):
+            # Not JSON, use as-is (legacy format, defaults to UTC)
+            cron_expr = rule.schedule_cron
+
+        # Use extracted cron expression or original if not JSON
+        if cron_expr is None:
+            cron_expr = rule.schedule_cron
+
+        # Get timezone object
+        try:
+            tz = ZoneInfo(timezone)
+        except Exception as e:
+            logger.warning(f"Invalid timezone {timezone}, using UTC: {str(e)}")
+            tz = ZoneInfo("UTC")
+            timezone = "UTC"
+
+        # Parse cron expression in the specified timezone
+        # Get current time in the schedule's timezone
+        now_tz = datetime.now(tz)
+        now_naive = now_tz.replace(tzinfo=None)
+
+        # croniter works with naive datetime
+        cron = croniter(cron_expr, now_naive)
+        next_run_naive = cron.get_next(datetime)
+
+        # Localize to the schedule's timezone, then convert to UTC for storage
+        if hasattr(tz, 'localize'):
+            # pytz timezone
+            next_run_tz = tz.localize(next_run_naive)
+        else:
+            # zoneinfo timezone
+            next_run_tz = next_run_naive.replace(tzinfo=tz)
+
+        # Convert to UTC for storage and scheduling
+        utc_tz = ZoneInfo("UTC")
+        next_run_utc = next_run_tz.astimezone(utc_tz)
 
         # Calculate interval in seconds from cron expression
-        interval_seconds = cron_to_interval_seconds(rule.schedule_cron)
+        interval_seconds = cron_to_interval_seconds(cron_expr)
 
-        logger.info(f"Scheduling rule {rule.id} ({rule.name}): next run at {next_run}, interval {interval_seconds}s")
+        logger.info(f"Scheduling rule {rule.id} ({rule.name}): next run at {next_run_utc} UTC (timezone: {timezone}), interval {interval_seconds}s")
 
-        # Schedule the job with interval (like the working project)
+        # Schedule the job with interval (rq-scheduler expects naive UTC datetime)
         job = scheduler.schedule(
-            scheduled_time=next_run,
+            scheduled_time=next_run_utc.replace(tzinfo=None),
             func=worker.check_campaign_rule,
             args=[rule.id],
             interval=interval_seconds,
@@ -124,12 +164,12 @@ def schedule_rule(rule: models.CampaignRule):
             id=f"rule_{rule.id}"
         )
 
-        # Update rule with next run time
+        # Update rule with next run time (stored in UTC)
         db = SessionLocal()
         try:
             rule_obj = db.query(models.CampaignRule).filter(models.CampaignRule.id == rule.id).first()
             if rule_obj:
-                rule_obj.next_run_at = next_run
+                rule_obj.next_run_at = next_run_utc
                 db.commit()
         finally:
             db.close()
