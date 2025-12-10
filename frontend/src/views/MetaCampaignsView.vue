@@ -2719,10 +2719,6 @@ function validateForm() {
         // Validate that each scope filter has a value
         const invalidScopes = [];
         ruleForm.value.scopeFilters.forEach((scope, idx) => {
-                valueType: typeof scope.value,
-                isArray: Array.isArray(scope.value),
-            });
-
             if (scope.type === "name_contains") {
                 // Check if it's an array with at least one non-empty string
                 if (!scope.value) {
@@ -2861,12 +2857,6 @@ async function saveRule() {
             summary: "Validation Error",
             detail: errorMessage,
             life: 6000,
-        });
-            scopeFilters: ruleForm.value.scopeFilters,
-            timeRangeUnit: ruleForm.value.timeRangeUnit,
-            timeRangeAmount: ruleForm.value.timeRangeAmount,
-            schedulePeriod: ruleForm.value.schedulePeriod,
-            scheduleFrequency: ruleForm.value.scheduleFrequency,
         });
         return;
     }
