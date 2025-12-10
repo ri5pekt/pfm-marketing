@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Optional
 
 
-class BusinessAccountBase(BaseModel):
+class AdAccountBase(BaseModel):
     name: str
     description: Optional[str] = None
     meta_account_id: Optional[str] = None
@@ -12,11 +12,11 @@ class BusinessAccountBase(BaseModel):
     is_default: bool = False
 
 
-class BusinessAccountCreate(BusinessAccountBase):
+class AdAccountCreate(AdAccountBase):
     pass
 
 
-class BusinessAccountUpdate(BaseModel):
+class AdAccountUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     meta_account_id: Optional[str] = None
@@ -25,7 +25,7 @@ class BusinessAccountUpdate(BaseModel):
     is_default: Optional[bool] = None
 
 
-class BusinessAccount(BusinessAccountBase):
+class AdAccount(AdAccountBase):
     id: int
     connection_status: Optional[bool] = None
     connection_last_checked: Optional[datetime] = None

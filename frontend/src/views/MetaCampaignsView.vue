@@ -4,20 +4,20 @@
             <h1>Meta Campaigns</h1>
             <div class="header-actions">
                 <Button
-                    label="Create Business Account"
+                    label="Create Ad Account"
                     icon="pi pi-plus"
                     severity="secondary"
                     outlined
-                    @click="showBusinessAccountDialog = true"
+                    @click="openCreateAdAccountDialog"
                 />
             </div>
         </div>
 
-        <!-- Business Accounts Section -->
-        <div class="business-accounts-section">
-            <h2>Business Accounts</h2>
+        <!-- Ad Accounts Section -->
+        <div class="ad-accounts-section">
+            <h2>Ad Accounts</h2>
             <DataTable
-                :value="businessAccounts"
+                :value="adAccounts"
                 :loading="loadingAccounts"
                 :selectionMode="'single'"
                 v-model:selection="selectedAccount"
@@ -40,7 +40,7 @@
                                 severity="warning"
                                 text
                                 rounded
-                                @click="editBusinessAccount(slotProps.data)"
+                                @click="editAdAccount(slotProps.data)"
                                 v-tooltip.top="'Edit'"
                             />
                             <Button
@@ -55,6 +55,176 @@
                     </template>
                 </Column>
             </DataTable>
+        </div>
+
+        <!-- Campaigns Section Toggle (shown when account is selected) -->
+        <div v-if="selectedAccount" class="campaigns-toggle-section">
+            <Button
+                :label="showCampaigns ? 'Hide Campaigns' : `Show Campaigns for ${selectedAccount.name}`"
+                :icon="showCampaigns ? 'pi pi-chevron-up' : 'pi pi-chevron-down'"
+                severity="secondary"
+                outlined
+                @click="showCampaigns = !showCampaigns"
+                class="campaigns-toggle-button"
+            />
+        </div>
+
+        <!-- Campaigns Section (shown when account is selected and toggle is on) -->
+        <div v-if="selectedAccount && showCampaigns" class="campaigns-section">
+            <div class="section-header">
+                <div class="header-left">
+                    <Button
+                        v-if="campaignsView !== 'campaigns'"
+                        icon="pi pi-arrow-left"
+                        label="Back"
+                        severity="secondary"
+                        outlined
+                        @click="goBack"
+                        class="back-button"
+                    />
+                    <h2>
+                        <span class="view-prefix">{{ getViewTitle().prefix }}</span>
+                        {{ getViewTitle().name }}
+                    </h2>
+                </div>
+                <div class="header-right">
+                    <Button
+                        v-if="campaignsView === 'campaigns'"
+                        label="Refresh"
+                        icon="pi pi-refresh"
+                        severity="secondary"
+                        outlined
+                        @click="loadCampaigns"
+                        :loading="loadingCampaigns"
+                        :disabled="loadingCampaigns"
+                    />
+                </div>
+            </div>
+
+            <!-- Campaigns View -->
+            <div v-if="campaignsView === 'campaigns'">
+                <div v-if="!campaigns || campaigns.length === 0" class="empty-message">
+                    <p v-if="!loadingCampaigns">Click "Refresh" to load campaigns from Meta API</p>
+                    <p v-else>Loading campaigns...</p>
+                </div>
+                <DataTable
+                    v-else
+                    :value="campaigns"
+                    :loading="loadingCampaigns"
+                    paginator
+                    :rows="10"
+                    :rowsPerPageOptions="[10, 20, 50]"
+                    class="campaigns-table"
+                    :rowHover="true"
+                >
+                    <Column field="id" header="ID" sortable />
+                    <Column field="name" header="Name" sortable>
+                        <template #body="slotProps">
+                            <div class="clickable-row" @click.stop="onCampaignClick({ data: slotProps.data })">
+                                {{ slotProps.data.name }}
+                                <i class="pi pi-chevron-right" style="margin-left: 0.5rem; color: #6b7280;"></i>
+                            </div>
+                        </template>
+                    </Column>
+                    <Column field="status" header="Status" sortable>
+                        <template #body="slotProps">
+                            <Tag
+                                :value="slotProps.data.status"
+                                :severity="getCampaignStatusSeverity(slotProps.data.status)"
+                            />
+                        </template>
+                    </Column>
+                    <Column field="effective_status" header="Effective Status" sortable>
+                        <template #body="slotProps">
+                            <Tag
+                                :value="slotProps.data.effective_status"
+                                :severity="getCampaignStatusSeverity(slotProps.data.effective_status)"
+                            />
+                        </template>
+                    </Column>
+                </DataTable>
+            </div>
+
+            <!-- Ad Sets View -->
+            <div v-else-if="campaignsView === 'adsets'">
+                <div v-if="!adSets || adSets.length === 0" class="empty-message">
+                    <p v-if="!loadingAdSets">No ad sets found for this campaign</p>
+                    <p v-else>Loading ad sets...</p>
+                </div>
+                <DataTable
+                    v-else
+                    :value="adSets"
+                    :loading="loadingAdSets"
+                    paginator
+                    :rows="10"
+                    :rowsPerPageOptions="[10, 20, 50]"
+                    class="campaigns-table"
+                    @row-click="onAdSetClick"
+                    :rowHover="true"
+                >
+                    <Column field="id" header="ID" sortable />
+                    <Column field="name" header="Name" sortable>
+                        <template #body="slotProps">
+                            <div class="clickable-row" @click.stop="onAdSetClick({ data: slotProps.data })">
+                                {{ slotProps.data.name }}
+                                <i class="pi pi-chevron-right" style="margin-left: 0.5rem; color: #6b7280;"></i>
+                            </div>
+                        </template>
+                    </Column>
+                    <Column field="status" header="Status" sortable>
+                        <template #body="slotProps">
+                            <Tag
+                                :value="slotProps.data.status"
+                                :severity="getCampaignStatusSeverity(slotProps.data.status)"
+                            />
+                        </template>
+                    </Column>
+                    <Column field="effective_status" header="Effective Status" sortable>
+                        <template #body="slotProps">
+                            <Tag
+                                :value="slotProps.data.effective_status"
+                                :severity="getCampaignStatusSeverity(slotProps.data.effective_status)"
+                            />
+                        </template>
+                    </Column>
+                </DataTable>
+            </div>
+
+            <!-- Ads View -->
+            <div v-else-if="campaignsView === 'ads'">
+                <div v-if="!ads || ads.length === 0" class="empty-message">
+                    <p v-if="!loadingAds">No ads found for this ad set</p>
+                    <p v-else>Loading ads...</p>
+                </div>
+                <DataTable
+                    v-else
+                    :value="ads"
+                    :loading="loadingAds"
+                    paginator
+                    :rows="10"
+                    :rowsPerPageOptions="[10, 20, 50]"
+                    class="campaigns-table"
+                >
+                    <Column field="id" header="ID" sortable />
+                    <Column field="name" header="Name" sortable />
+                    <Column field="status" header="Status" sortable>
+                        <template #body="slotProps">
+                            <Tag
+                                :value="slotProps.data.status"
+                                :severity="getCampaignStatusSeverity(slotProps.data.status)"
+                            />
+                        </template>
+                    </Column>
+                    <Column field="effective_status" header="Effective Status" sortable>
+                        <template #body="slotProps">
+                            <Tag
+                                :value="slotProps.data.effective_status"
+                                :severity="getCampaignStatusSeverity(slotProps.data.effective_status)"
+                            />
+                        </template>
+                    </Column>
+                </DataTable>
+            </div>
         </div>
 
         <!-- Rules Section (shown when account is selected) -->
@@ -152,10 +322,10 @@
             </DataTable>
         </div>
 
-        <!-- Business Account Create/Edit Dialog -->
+        <!-- Ad Account Create/Edit Dialog -->
         <Dialog
-            v-model:visible="showBusinessAccountDialog"
-            :header="editingAccount ? 'Edit Business Account' : 'Create Business Account'"
+            v-model:visible="showAdAccountDialog"
+            :header="editingAccount ? 'Edit Ad Account' : 'Create Ad Account'"
             :modal="true"
             :style="{ width: '600px' }"
         >
@@ -199,12 +369,50 @@
                         <label for="is_default" class="checkbox-label">Set as Default</label>
                     </div>
                 </div>
+                <!-- Connection Status (only show when editing) -->
+                <div v-if="editingAccount" class="field">
+                    <label>Connection Status</label>
+                    <div class="connection-status-container">
+                        <div class="connection-status-info">
+                            <i
+                                v-if="connectionStatus === true"
+                                class="pi pi-check-circle connection-status-icon success"
+                            ></i>
+                            <i
+                                v-else-if="connectionStatus === false"
+                                class="pi pi-times-circle connection-status-icon error"
+                            ></i>
+                            <i
+                                v-else
+                                class="pi pi-question-circle connection-status-icon unknown"
+                            ></i>
+                            <span class="connection-status-text">
+                                {{ connectionStatus === true ? 'Active' : connectionStatus === false ? 'Failed' : 'Not Tested' }}
+                            </span>
+                        </div>
+                        <div v-if="connectionLastChecked" class="connection-last-checked">
+                            <small class="p-text-secondary">
+                                Last checked: {{ formatDate(connectionLastChecked) }}
+                            </small>
+                        </div>
+                    </div>
+                    <Button
+                        label="Test Connection"
+                        icon="pi pi-refresh"
+                        severity="secondary"
+                        outlined
+                        @click="testConnection"
+                        :loading="testingConnection"
+                        :disabled="testingConnection"
+                        class="mt-2"
+                    />
+                </div>
             </div>
             <template #footer>
                 <Button label="Cancel" severity="secondary" @click="closeAccountDialog" />
                 <Button
                     :label="editingAccount ? 'Update' : 'Create'"
-                    @click="saveBusinessAccount"
+                    @click="saveAdAccount"
                     :loading="savingAccount"
                 />
             </template>
@@ -297,15 +505,10 @@
                                             }"
                                             @add="
                                                 () => {
-                                                    console.log('Chip added, scope.value:', scope.value);
                                                     formErrors.scopeFilters = '';
                                                 }
                                             "
-                                            @remove="
-                                                () => {
-                                                    console.log('Chip removed, scope.value:', scope.value);
-                                                }
-                                            "
+                                            @remove="() => {}"
                                         />
                                         <small
                                             v-if="
@@ -558,18 +761,27 @@
                                 </div>
                                 <div class="field">
                                     <label>Value *</label>
-                                    <InputText
-                                        v-if="!isNumericField(condition.field)"
+                                    <Select
+                                        v-if="condition.field === 'status' || condition.field === 'campaign_status'"
                                         v-model="condition.value"
-                                        :placeholder="getValuePlaceholder(condition.field)"
+                                        :options="statusOptions"
+                                        optionLabel="label"
+                                        optionValue="value"
+                                        placeholder="Select status"
                                         class="w-full"
                                     />
                                     <InputNumber
-                                        v-else
+                                        v-else-if="isNumericField(condition.field)"
                                         v-model="condition.value"
                                         :min="0"
                                         :step="0.01"
                                         placeholder="Enter value"
+                                        class="w-full"
+                                    />
+                                    <InputText
+                                        v-else
+                                        v-model="condition.value"
+                                        :placeholder="getValuePlaceholder(condition.field)"
                                         class="w-full"
                                     />
                                 </div>
@@ -1193,33 +1405,50 @@ import {
     deleteRuleLog,
 } from "@/api/metaCampaignsApi";
 import {
-    getBusinessAccounts,
-    getDefaultBusinessAccount,
-    createBusinessAccount,
-    updateBusinessAccount,
-    deleteBusinessAccount,
-} from "@/api/businessAccountsApi";
+    getAdAccounts,
+    getDefaultAdAccount,
+    createAdAccount,
+    updateAdAccount,
+    deleteAdAccount,
+    getAdAccountCampaigns,
+    getCampaignAdSets,
+    getAdSetAds,
+    testAdAccountConnection,
+} from "@/api/adAccountsApi";
 
 const toast = useToast();
 const confirm = useConfirm();
 
-const businessAccounts = ref([]);
+const adAccounts = ref([]);
 const selectedAccount = ref(null);
+const campaigns = ref([]);
+const adSets = ref([]);
+const ads = ref([]);
+const campaignsView = ref('campaigns'); // 'campaigns', 'adsets', 'ads'
+const selectedCampaign = ref(null);
+const selectedAdSet = ref(null);
 const rules = ref([]);
 const logs = ref([]);
 const loadingAccounts = ref(false);
+const loadingCampaigns = ref(false);
+const loadingAdSets = ref(false);
+const loadingAds = ref(false);
 const loading = ref(false);
 const loadingLogs = ref(false);
 const savingAccount = ref(false);
 const saving = ref(false);
 const testingRuleId = ref(null);
-const showBusinessAccountDialog = ref(false);
+const testingConnection = ref(false);
+const showAdAccountDialog = ref(false);
 const showCreateDialog = ref(false);
 const showLogsDialog = ref(false);
 const showLogDetailsDialog = ref(false);
+const showCampaigns = ref(false);
 const editingAccount = ref(null);
 const editingRule = ref(null);
 const selectedLogDetails = ref(null);
+const connectionStatus = ref(null);
+const connectionLastChecked = ref(null);
 
 const accountForm = ref({
     name: "",
@@ -1346,6 +1575,7 @@ const adConditionFields = [
     { label: "CPC", value: "cpc" },
     { label: "CPM", value: "cpm" },
     { label: "Status", value: "status" },
+    { label: "Campaign Status", value: "campaign_status" },
 ];
 
 // Condition fields for Ad Set level
@@ -1356,6 +1586,7 @@ const adSetConditionFields = [
     { label: "ROAS", value: "roas" },
     { label: "Daily budget", value: "daily_budget" },
     { label: "Status", value: "status" },
+    { label: "Campaign Status", value: "campaign_status" },
 ];
 
 // Condition fields for Campaign level
@@ -1430,10 +1661,10 @@ const availableActionTypes = computed(() => {
 let rulesPollingInterval = null;
 
 onMounted(async () => {
-    await loadBusinessAccounts();
+    await loadAdAccounts();
     // Select default account if available
     try {
-        const defaultAccount = await getDefaultBusinessAccount();
+        const defaultAccount = await getDefaultAdAccount();
         selectedAccount.value = defaultAccount;
         await loadRules();
     } catch (error) {
@@ -1464,15 +1695,15 @@ watch(selectedAccount, async (newAccount) => {
     }
 });
 
-async function loadBusinessAccounts() {
+async function loadAdAccounts() {
     loadingAccounts.value = true;
     try {
-        businessAccounts.value = await getBusinessAccounts();
+        adAccounts.value = await getAdAccounts();
     } catch (error) {
         toast.add({
             severity: "error",
             summary: "Error",
-            detail: "Failed to load business accounts",
+            detail: "Failed to load ad accounts",
             life: 5000,
         });
     } finally {
@@ -1507,9 +1738,146 @@ async function loadRules(silent = false) {
 
 function onAccountSelect(event) {
     selectedAccount.value = event.data;
+    // Clear campaigns and hide section when account changes
+    campaigns.value = [];
+    adSets.value = [];
+    ads.value = [];
+    campaignsView.value = 'campaigns';
+    selectedCampaign.value = null;
+    selectedAdSet.value = null;
+    showCampaigns.value = false;
 }
 
-function editBusinessAccount(account) {
+async function loadCampaigns() {
+    if (!selectedAccount.value) {
+        toast.add({
+            severity: "warn",
+            summary: "No Account Selected",
+            detail: "Please select an ad account first",
+            life: 3000,
+        });
+        return;
+    }
+
+    loadingCampaigns.value = true;
+    try {
+        const response = await getAdAccountCampaigns(selectedAccount.value.id);
+        campaigns.value = response.data || [];
+        toast.add({
+            severity: "success",
+            summary: "Campaigns Loaded",
+            detail: `Loaded ${campaigns.value.length} campaign(s)`,
+            life: 3000,
+        });
+    } catch (error) {
+        toast.add({
+            severity: "error",
+            summary: "Error",
+            detail: error.message || "Failed to load campaigns",
+            life: 5000,
+        });
+        campaigns.value = [];
+    } finally {
+        loadingCampaigns.value = false;
+    }
+}
+
+function getCampaignStatusSeverity(status) {
+    if (!status) return "secondary";
+    const upperStatus = status.toUpperCase();
+    if (upperStatus === "ACTIVE") return "success";
+    if (upperStatus === "PAUSED") return "warning";
+    if (upperStatus === "DELETED" || upperStatus === "ARCHIVED") return "danger";
+    return "secondary";
+}
+
+function getViewTitle() {
+    if (campaignsView.value === 'adsets') {
+        return {
+            prefix: 'Ad Sets for',
+            name: selectedCampaign.value?.name || 'Campaign'
+        };
+    } else if (campaignsView.value === 'ads') {
+        return {
+            prefix: 'Ads for',
+            name: selectedAdSet.value?.name || 'Ad Set'
+        };
+    }
+    return {
+        prefix: 'Campaigns for',
+        name: selectedAccount.value?.name || ''
+    };
+}
+
+function onCampaignClick(event) {
+    const campaign = event.data;
+    selectedCampaign.value = campaign;
+    campaignsView.value = 'adsets';
+    loadAdSets(campaign.id);
+}
+
+function onAdSetClick(event) {
+    const adSet = event.data;
+    selectedAdSet.value = adSet;
+    campaignsView.value = 'ads';
+    loadAds(adSet.id);
+}
+
+async function loadAdSets(campaignId) {
+    if (!selectedAccount.value) return;
+
+    loadingAdSets.value = true;
+    try {
+        const response = await getCampaignAdSets(selectedAccount.value.id, campaignId);
+        adSets.value = response.data || [];
+    } catch (error) {
+        toast.add({
+            severity: "error",
+            summary: "Error",
+            detail: error.message || "Failed to load ad sets",
+            life: 5000,
+        });
+        adSets.value = [];
+    } finally {
+        loadingAdSets.value = false;
+    }
+}
+
+async function loadAds(adsetId) {
+    if (!selectedAccount.value) return;
+
+    loadingAds.value = true;
+    try {
+        const response = await getAdSetAds(selectedAccount.value.id, adsetId);
+        ads.value = response.data || [];
+    } catch (error) {
+        toast.add({
+            severity: "error",
+            summary: "Error",
+            detail: error.message || "Failed to load ads",
+            life: 5000,
+        });
+        ads.value = [];
+    } finally {
+        loadingAds.value = false;
+    }
+}
+
+function goBack() {
+    if (campaignsView.value === 'ads') {
+        // Go back to ad sets
+        campaignsView.value = 'adsets';
+        ads.value = [];
+        selectedAdSet.value = null;
+    } else if (campaignsView.value === 'adsets') {
+        // Go back to campaigns
+        campaignsView.value = 'campaigns';
+        adSets.value = [];
+        selectedCampaign.value = null;
+    }
+}
+
+function editAdAccount(account) {
     editingAccount.value = account;
     accountForm.value = {
         name: account.name,
@@ -1519,12 +1887,33 @@ function editBusinessAccount(account) {
         slack_webhook_url: account.slack_webhook_url || "",
         is_default: account.is_default || false,
     };
-    showBusinessAccountDialog.value = true;
+    // Load connection status
+    connectionStatus.value = account.connection_status ?? null;
+    connectionLastChecked.value = account.connection_last_checked ? new Date(account.connection_last_checked) : null;
+    showAdAccountDialog.value = true;
+}
+
+function openCreateAdAccountDialog() {
+    // Reset form and clear editing state
+    editingAccount.value = null;
+    connectionStatus.value = null;
+    connectionLastChecked.value = null;
+    accountForm.value = {
+        name: "",
+        description: "",
+        meta_account_id: "",
+        meta_access_token: "",
+        slack_webhook_url: "",
+        is_default: false,
+    };
+    showAdAccountDialog.value = true;
 }
 
 function closeAccountDialog() {
-    showBusinessAccountDialog.value = false;
+    showAdAccountDialog.value = false;
     editingAccount.value = null;
+    connectionStatus.value = null;
+    connectionLastChecked.value = null;
     accountForm.value = {
         name: "",
         description: "",
@@ -1535,31 +1924,92 @@ function closeAccountDialog() {
     };
 }
 
-async function saveBusinessAccount() {
-    savingAccount.value = true;
+async function testConnection() {
+    if (!editingAccount.value) return;
+
+    testingConnection.value = true;
     try {
-        if (editingAccount.value) {
-            await updateBusinessAccount(editingAccount.value.id, accountForm.value);
+        const result = await testAdAccountConnection(editingAccount.value.id);
+
+        // Update connection status
+        connectionStatus.value = result.connection_status;
+        connectionLastChecked.value = result.connection_last_checked ? new Date(result.connection_last_checked) : null;
+
+        // Show toast based on result
+        if (result.success) {
             toast.add({
                 severity: "success",
-                summary: "Success",
-                detail: "Business account updated successfully",
+                summary: "Connection Test",
+                detail: result.message,
                 life: 3000,
             });
         } else {
-            await createBusinessAccount(accountForm.value);
+            if (result.cooldown_active) {
+                toast.add({
+                    severity: "warn",
+                    summary: "Cooldown Active",
+                    detail: result.message,
+                    life: 3000,
+                });
+            } else {
+                toast.add({
+                    severity: "error",
+                    summary: "Connection Test Failed",
+                    detail: result.message,
+                    life: 5000,
+                });
+            }
+        }
+
+        // Refresh account data to get updated status
+        await loadAdAccounts();
+        const updatedAccount = adAccounts.value.find(a => a.id === editingAccount.value.id);
+        if (updatedAccount) {
+            editingAccount.value = updatedAccount;
+        }
+    } catch (error) {
+        toast.add({
+            severity: "error",
+            summary: "Error",
+            detail: error.message || "Failed to test connection",
+            life: 5000,
+        });
+    } finally {
+        testingConnection.value = false;
+    }
+}
+
+function formatDate(date) {
+    if (!date) return "";
+    const d = new Date(date);
+    return d.toLocaleString();
+}
+
+async function saveAdAccount() {
+    savingAccount.value = true;
+    try {
+        if (editingAccount.value) {
+            await updateAdAccount(editingAccount.value.id, accountForm.value);
             toast.add({
                 severity: "success",
                 summary: "Success",
-                detail: "Business account created successfully",
+                detail: "Ad account updated successfully",
+                life: 3000,
+            });
+        } else {
+            await createAdAccount(accountForm.value);
+            toast.add({
+                severity: "success",
+                summary: "Success",
+                detail: "Ad account created successfully",
                 life: 3000,
             });
         }
         closeAccountDialog();
-        await loadBusinessAccounts();
+        await loadAdAccounts();
         // If default was set, select it
         if (accountForm.value.is_default) {
-            const accounts = await getBusinessAccounts();
+            const accounts = await getAdAccounts();
             const defaultAcc = accounts.find((a) => a.is_default);
             if (defaultAcc) {
                 selectedAccount.value = defaultAcc;
@@ -1569,7 +2019,7 @@ async function saveBusinessAccount() {
         toast.add({
             severity: "error",
             summary: "Error",
-            detail: error.message || "Failed to save business account",
+            detail: error.message || "Failed to save ad account",
             life: 5000,
         });
     } finally {
@@ -1584,22 +2034,22 @@ function confirmDeleteAccount(account) {
         icon: "pi pi-exclamation-triangle",
         accept: async () => {
             try {
-                await deleteBusinessAccount(account.id);
+                await deleteAdAccount(account.id);
                 toast.add({
                     severity: "success",
                     summary: "Success",
-                    detail: "Business account deleted successfully",
+                    detail: "Ad account deleted successfully",
                     life: 3000,
                 });
                 if (selectedAccount.value?.id === account.id) {
                     selectedAccount.value = null;
                 }
-                await loadBusinessAccounts();
+                await loadAdAccounts();
             } catch (error) {
                 toast.add({
                     severity: "error",
                     summary: "Error",
-                    detail: "Failed to delete business account",
+                    detail: "Failed to delete ad account",
                     life: 5000,
                 });
             }
@@ -1646,7 +2096,7 @@ function isNumericField(field) {
 }
 
 function getValuePlaceholder(field) {
-    if (field === "status") {
+    if (field === "status" || field === "campaign_status") {
         return "ACTIVE or PAUSED";
     } else if (field === "name_contains") {
         return "Enter text to match";
@@ -1741,14 +2191,12 @@ function editRule(rule) {
     editingRule.value = rule;
     // Try to parse existing cron expression
     const parsed = parseCronExpression(rule.schedule_cron);
-    console.log("Editing rule - Parsing cron:", rule.schedule_cron, "Parsed result:", parsed);
 
     const conditions = rule.conditions || {};
     const actions = rule.actions || {};
 
     // Parse scope filters
     const scopeFilters = [];
-    console.log("Loading conditions:", conditions);
 
     if (conditions.name_contains) {
         if (Array.isArray(conditions.name_contains) && conditions.name_contains.length > 0) {
@@ -1791,7 +2239,6 @@ function editRule(rule) {
         }
     }
 
-    console.log("Parsed scope filters:", scopeFilters);
 
     // Parse conditions array
     const conditionsArray = conditions.conditions || [];
@@ -1845,13 +2292,6 @@ function editRule(rule) {
         customDailySchedule: parsed.customDailySchedule || {},
     };
 
-    console.log("Loaded form for editing:", {
-        schedulePeriod: ruleForm.value.schedulePeriod,
-        scheduleFrequency: ruleForm.value.scheduleFrequency,
-        scheduleTime: ruleForm.value.scheduleTime,
-        parsedCron: parsed,
-        originalCron: rule.schedule_cron,
-    });
 
     scheduleFormErrors.value = {};
     formErrors.value = {};
@@ -2279,9 +2719,6 @@ function validateForm() {
         // Validate that each scope filter has a value
         const invalidScopes = [];
         ruleForm.value.scopeFilters.forEach((scope, idx) => {
-            console.log(`Validating scope filter ${idx}:`, {
-                type: scope.type,
-                value: scope.value,
                 valueType: typeof scope.value,
                 isArray: Array.isArray(scope.value),
             });
@@ -2371,8 +2808,6 @@ function validateForm() {
             } else {
                 formErrors.value.scopeFilters = `The following scope filter(s) are missing values: ${labels}. Please fill in all required fields.`;
             }
-            console.error("Invalid scope filters:", invalidScopes);
-            console.error("Current scope filters data:", JSON.parse(JSON.stringify(ruleForm.value.scopeFilters)));
         }
     }
 
@@ -2397,7 +2832,7 @@ async function saveRule() {
         toast.add({
             severity: "warn",
             summary: "Warning",
-            detail: "Please select a business account first",
+            detail: "Please select an ad account first",
             life: 3000,
         });
         return;
@@ -2427,13 +2862,6 @@ async function saveRule() {
             detail: errorMessage,
             life: 6000,
         });
-        console.error("Form validation errors:", {
-            formErrors: formErrors.value,
-            scheduleFormErrors: scheduleFormErrors.value,
-        });
-        console.error("Current form state:", {
-            name: ruleForm.value.name,
-            ruleLevel: ruleForm.value.ruleLevel,
             scopeFilters: ruleForm.value.scopeFilters,
             timeRangeUnit: ruleForm.value.timeRangeUnit,
             timeRangeAmount: ruleForm.value.timeRangeAmount,
@@ -2458,34 +2886,21 @@ async function saveRule() {
 
     // Build scope filters object
     const scopeObject = {};
-    console.log("Current scope filters in form:", ruleForm.value.scopeFilters);
 
     ruleForm.value.scopeFilters.forEach((scope, idx) => {
-        console.log(`Processing scope filter ${idx}:`, scope);
 
         if (scope.type === "name_contains") {
             // Chips component stores array of strings
-            console.log(
-                "Name contains value:",
-                scope.value,
-                "Type:",
-                typeof scope.value,
-                "Is Array:",
-                Array.isArray(scope.value)
-            );
 
             if (Array.isArray(scope.value) && scope.value.length > 0) {
                 const filtered = scope.value.filter((v) => v && v.trim().length > 0);
                 if (filtered.length > 0) {
                     scopeObject.name_contains = filtered;
-                    console.log("Saving name_contains:", filtered);
                 }
             } else if (typeof scope.value === "string" && scope.value.trim().length > 0) {
                 // Fallback in case it's stored as string
                 scopeObject.name_contains = [scope.value.trim()];
-                console.log("Saving name_contains as string:", scopeObject.name_contains);
             } else {
-                console.warn("name_contains scope has no valid value:", scope.value);
             }
         } else if (scope.type === "ids") {
             // Chips component stores array of strings
@@ -2493,14 +2908,12 @@ async function saveRule() {
                 const filtered = scope.value.filter((v) => v && v.trim().length > 0);
                 if (filtered.length > 0) {
                     scopeObject.ids = filtered;
-                    console.log("Saving ids:", filtered);
                 }
             } else if (typeof scope.value === "string" && scope.value.trim().length > 0) {
                 // Fallback: handle comma-separated string
                 const ids = parseIds(scope.value);
                 if (ids.length > 0) {
                     scopeObject.ids = ids;
-                    console.log("Saving ids from string:", ids);
                 }
             }
         } else if (scope.type === "campaign_name_contains") {
@@ -2509,11 +2922,9 @@ async function saveRule() {
                 const filtered = scope.value.filter((v) => v && v.trim().length > 0);
                 if (filtered.length > 0) {
                     scopeObject.campaign_name_contains = filtered;
-                    console.log("Saving campaign_name_contains:", filtered);
                 }
             } else if (typeof scope.value === "string" && scope.value.trim().length > 0) {
                 scopeObject.campaign_name_contains = [scope.value.trim()];
-                console.log("Saving campaign_name_contains as string:", scopeObject.campaign_name_contains);
             }
         } else if (scope.type === "campaign_ids") {
             // Chips component stores array of strings
@@ -2521,26 +2932,18 @@ async function saveRule() {
                 const filtered = scope.value.filter((v) => v && v.trim().length > 0);
                 if (filtered.length > 0) {
                     scopeObject.campaign_ids = filtered;
-                    console.log("Saving campaign_ids:", filtered);
                 }
             } else if (typeof scope.value === "string" && scope.value.trim().length > 0) {
                 // Fallback: handle comma-separated string
                 const ids = parseIds(scope.value);
                 if (ids.length > 0) {
                     scopeObject.campaign_ids = ids;
-                    console.log("Saving campaign_ids from string:", ids);
                 }
             }
         }
     });
 
     // Debug: Log scope filters being saved
-    console.log("Final scope object to save:", scopeObject);
-    if (Object.keys(scopeObject).length === 0) {
-        console.warn(
-            "WARNING: No scope filters being saved! Check that scope filters are properly populated in the form."
-        );
-    }
 
     // Build conditions JSON
     const conditionsJSON = {
@@ -2591,11 +2994,10 @@ async function saveRule() {
             enabled: ruleForm.value.enabled,
             conditions: conditionsJSON,
             actions: actionsJSON,
-            business_account_id: selectedAccount.value.id,
+            ad_account_id: selectedAccount.value.id,
         };
 
         // Debug: Log what's being saved
-        console.log("Saving rule data:", JSON.stringify(ruleData, null, 2));
 
         if (editingRule.value) {
             await updateRule(editingRule.value.id, ruleData);
@@ -2976,11 +3378,6 @@ function downloadLogDetails(log) {
     });
 }
 
-function formatDate(date) {
-    if (!date) return "Never";
-    return new Date(date).toLocaleString();
-}
-
 function getTimezoneFromSchedule(scheduleCron) {
     if (!scheduleCron) return null;
     try {
@@ -3163,11 +3560,80 @@ function getStatusSeverity(status) {
     gap: 1rem;
 }
 
-.business-accounts-section {
+.ad-accounts-section {
     margin-bottom: 3rem;
 }
 
-.business-accounts-section h2,
+.campaigns-toggle-section {
+    margin-top: 1rem;
+    margin-bottom: 2rem;
+}
+
+.campaigns-toggle-button {
+    width: 100%;
+    justify-content: flex-start;
+}
+
+.campaigns-section {
+    margin-top: 3rem;
+    margin-bottom: 2rem;
+    padding: 1.5rem;
+    background-color: #ffffff;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.campaigns-section .section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.campaigns-section .header-left {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.campaigns-section .header-left h2 {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 400;
+    color: #1f2937;
+}
+
+.campaigns-section .header-left h2 .view-prefix {
+    font-weight: 600;
+    color: #6b7280;
+    margin-right: 0.5rem;
+}
+
+.campaigns-section .back-button {
+    margin-right: 0.5rem;
+}
+
+.clickable-row {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    color: #2563eb;
+}
+
+.clickable-row:hover {
+    text-decoration: underline;
+}
+
+
+.campaigns-table {
+    margin-top: 1rem;
+}
+
+.rules-section {
+    margin-bottom: 3rem;
+}
+
+.ad-accounts-section h2,
 .rules-section h2 {
     font-size: 1.5rem;
     font-weight: 600;
@@ -3254,6 +3720,42 @@ function getStatusSeverity(status) {
 .checkbox-field {
     flex-direction: row;
     align-items: center;
+}
+
+.connection-status-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.connection-status-info {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.connection-status-icon {
+    font-size: 1.25rem;
+}
+
+.connection-status-icon.success {
+    color: #22c55e;
+}
+
+.connection-status-icon.error {
+    color: #ef4444;
+}
+
+.connection-status-icon.unknown {
+    color: #6b7280;
+}
+
+.connection-status-text {
+    font-weight: 500;
+}
+
+.connection-last-checked {
+    margin-left: 1.75rem;
 }
 
 .checkbox-container {

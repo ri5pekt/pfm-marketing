@@ -4,7 +4,7 @@ from typing import Optional, Dict, Any
 
 
 class RuleBase(BaseModel):
-    business_account_id: int
+    ad_account_id: int
     name: str
     description: Optional[str] = None
     enabled: bool = True
@@ -20,7 +20,7 @@ class RuleCreate(RuleBase):
 
 
 class RuleUpdate(BaseModel):
-    business_account_id: Optional[int] = None
+    ad_account_id: Optional[int] = None
     name: Optional[str] = None
     description: Optional[str] = None
     enabled: Optional[bool] = None
@@ -37,7 +37,7 @@ class Rule(RuleBase):
     updated_at: Optional[datetime] = None
     last_run_at: Optional[datetime] = None
     next_run_at: Optional[datetime] = None
-    business_account_id: int
+    ad_account_id: int
 
     class Config:
         from_attributes = True

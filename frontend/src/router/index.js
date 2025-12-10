@@ -60,7 +60,6 @@ router.beforeEach(async (to, from, next) => {
     try {
       await authStore.fetchMe()
     } catch (error) {
-      console.error('Failed to fetch user on route guard:', error)
       // fetchMe handles clearing token on 401 errors
     }
   }

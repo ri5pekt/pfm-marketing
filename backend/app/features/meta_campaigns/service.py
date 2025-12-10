@@ -13,9 +13,9 @@ def get_all_rules(db: Session):
     return db.query(models.CampaignRule).all()
 
 
-def get_rules_by_business_account(db: Session, business_account_id: int):
+def get_rules_by_ad_account(db: Session, ad_account_id: int):
     return db.query(models.CampaignRule).filter(
-        models.CampaignRule.business_account_id == business_account_id
+        models.CampaignRule.ad_account_id == ad_account_id
     ).all()
 
 
@@ -456,8 +456,15 @@ def calculate_metric_from_insights(insights: Dict, field: str) -> float:
     return None
 
 
-def evaluate_condition(item: Dict, insights: Dict, condition: Dict) -> Tuple[bool, Dict]:
-    """Evaluate a single condition against an item"""
+def evaluate_condition(item: Dict, insights: Dict, condition: Dict, campaign_status_cache: Dict[str, str] = None) -> Tuple[bool, Dict]:
+    """Evaluate a single condition against an item
+
+    Args:
+        item: The item (ad, adset, or campaign) to evaluate
+        insights: Insights data for the item
+        condition: The condition to evaluate
+        campaign_status_cache: Optional dict mapping campaign_id to campaign status
+    """
     field = condition.get("field")
     operator = condition.get("operator")
     expected_value = condition.get("value")
@@ -478,6 +485,25 @@ def evaluate_condition(item: Dict, insights: Dict, condition: Dict) -> Tuple[boo
             evaluation["passed"] = str(actual_value) == str(expected_value)
         elif operator == "!=":
             evaluation["passed"] = str(actual_value) != str(expected_value)
+
+    # Handle campaign_status field (from campaign data)
+    elif field == "campaign_status":
+        campaign_id = item.get("campaign_id")
+        if campaign_id and campaign_status_cache:
+            actual_value = campaign_status_cache.get(str(campaign_id))
+            evaluation["actual_value"] = actual_value
+            if actual_value is not None:
+                if operator == "=":
+                    evaluation["passed"] = str(actual_value) == str(expected_value)
+                elif operator == "!=":
+                    evaluation["passed"] = str(actual_value) != str(expected_value)
+            else:
+                # Campaign status not found in cache, condition fails
+                evaluation["passed"] = False
+        else:
+            # No campaign_id or no cache available, condition fails
+            evaluation["actual_value"] = None
+            evaluation["passed"] = False
 
     # Handle name_contains field (from object data)
     elif field == "name_contains":
@@ -798,19 +824,19 @@ def test_rule(db: Session, rule_id: int):
         create_rule_log(db, rule_id, "skipped", "Rule is disabled", {})
         return {"message": "Rule is disabled", "rule_id": rule_id}
 
-    # Get business account for credentials
-    from app.features.meta_campaigns.models import BusinessAccount
-    business_account = db.query(BusinessAccount).filter(
-        BusinessAccount.id == rule.business_account_id
+    # Get ad account for credentials
+    from app.features.meta_campaigns.models import AdAccount
+    ad_account = db.query(AdAccount).filter(
+        AdAccount.id == rule.ad_account_id
     ).first()
 
-    if not business_account:
-        create_rule_log(db, rule_id, "error", "Business account not found", {})
-        raise ValueError("Business account not found")
+    if not ad_account:
+        create_rule_log(db, rule_id, "error", "Ad account not found", {})
+        raise ValueError("Ad account not found")
 
-    account_id = rule.meta_account_id or business_account.meta_account_id
-    access_token = rule.meta_access_token or business_account.meta_access_token
-    slack_webhook_url = business_account.slack_webhook_url
+    account_id = rule.meta_account_id or ad_account.meta_account_id
+    access_token = rule.meta_access_token or ad_account.meta_access_token
+    slack_webhook_url = ad_account.slack_webhook_url
 
     if not account_id or not access_token:
         create_rule_log(db, rule_id, "error", "Meta account ID or access token missing", {})
@@ -873,7 +899,59 @@ def test_rule(db: Session, rule_id: int):
             "sample_insights": {k: v for k, v in list(insights_data.items())[:3]}  # First 3 for debugging
         }
 
-        # Step 4: Evaluate conditions for each item
+        # Step 4: Pre-fetch campaign statuses if needed (for ad/ad_set levels with campaign_status conditions)
+        campaign_status_cache = {}
+        has_campaign_status_condition = any(
+            cond.get("field") == "campaign_status" for cond in rule_conditions
+        )
+
+        if has_campaign_status_condition and rule_level in ["ad", "ad_set"]:
+            # Collect unique campaign IDs from filtered items
+            campaign_ids = set()
+            for item in filtered_data:
+                campaign_id = item.get("campaign_id")
+                if campaign_id:
+                    campaign_ids.add(str(campaign_id))
+
+            # Fetch campaign statuses if we have campaign IDs
+            if campaign_ids:
+                try:
+                    base_url = "https://graph.facebook.com/v21.0"
+                    if not account_id.startswith("act_"):
+                        account_id_formatted = f"act_{account_id}"
+                    else:
+                        account_id_formatted = account_id
+
+                    # Fetch campaigns in batches using filtering (Facebook API supports up to 50 IDs per filter)
+                    batch_size = 50
+                    campaign_ids_list = list(campaign_ids)
+                    for i in range(0, len(campaign_ids_list), batch_size):
+                        batch_ids = campaign_ids_list[i:i + batch_size]
+                        # Build filtering JSON string for campaign IDs
+                        filtering = f"[{{\"field\":\"campaign.id\",\"operator\":\"IN\",\"value\":[{','.join([f'\"{id_val}\"' for id_val in batch_ids])}]}}]"
+
+                        url = f"{base_url}/{account_id_formatted}/campaigns"
+                        params = {
+                            "fields": "id,status,effective_status",
+                            "filtering": filtering,
+                            "limit": batch_size,
+                            "access_token": access_token
+                        }
+                        response = requests.get(url, params=params, timeout=30)
+                        if response.status_code == 200:
+                            data = response.json()
+                            campaigns_data = data.get("data", [])
+                            for campaign in campaigns_data:
+                                campaign_id = str(campaign.get("id"))
+                                status = campaign.get("status") or campaign.get("effective_status")
+                                campaign_status_cache[campaign_id] = status
+                        else:
+                            logger.warning(f"Error fetching campaign statuses: {response.status_code} - {response.text}")
+                except Exception as e:
+                    logger.warning(f"Error fetching campaign statuses: {str(e)}")
+                    # Continue without campaign status cache - conditions will fail gracefully
+
+        # Step 5: Evaluate conditions for each item
         items_meeting_conditions = []
 
         for item in filtered_data:
@@ -890,7 +968,7 @@ def test_rule(db: Session, rule_id: int):
             # Evaluate all conditions
             all_passed = True
             for condition in rule_conditions:
-                passed, evaluation = evaluate_condition(item, insights, condition)
+                passed, evaluation = evaluate_condition(item, insights, condition, campaign_status_cache)
                 item_evaluation["conditions_evaluated"].append(evaluation)
                 if not passed:
                     all_passed = False
@@ -901,7 +979,7 @@ def test_rule(db: Session, rule_id: int):
             if all_passed:
                 items_meeting_conditions.append(item)
 
-        # Step 5: Determine decision
+        # Step 6: Determine decision
         decision = "proceed" if len(items_meeting_conditions) > 0 else "skip"
         log_details["decision"] = decision
         log_details["items_meeting_conditions_count"] = len(items_meeting_conditions)
@@ -910,7 +988,7 @@ def test_rule(db: Session, rule_id: int):
             for item in items_meeting_conditions
         ]
 
-        # Step 6: Execute actions if conditions are met
+        # Step 7: Execute actions if conditions are met
         actions_executed = []
         if decision == "proceed" and len(items_meeting_conditions) > 0:
             rule_actions = rule.actions.get("actions", [])

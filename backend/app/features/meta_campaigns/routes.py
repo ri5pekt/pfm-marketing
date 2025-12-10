@@ -12,13 +12,13 @@ router = APIRouter(prefix="/meta-campaigns", tags=["meta-campaigns"])
 
 @router.get("/rules", response_model=list[schemas.Rule])
 def get_rules(
-    business_account_id: Optional[int] = Query(None),
+    ad_account_id: Optional[int] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    """Get all campaign rules, optionally filtered by business account"""
-    if business_account_id:
-        return service.get_rules_by_business_account(db, business_account_id)
+    """Get all campaign rules, optionally filtered by ad account"""
+    if ad_account_id:
+        return service.get_rules_by_ad_account(db, ad_account_id)
     return service.get_all_rules(db)
 
 

@@ -94,3 +94,19 @@ def get_business_account_campaigns(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@router.post("/{account_id}/test-connection")
+def test_business_account_connection(
+    account_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Test the connection to Meta API for a business account"""
+    try:
+        result = business_account_service.test_business_account_connection(db, account_id)
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+

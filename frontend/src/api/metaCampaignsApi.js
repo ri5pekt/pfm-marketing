@@ -1,8 +1,8 @@
 import { get, post, put, del } from './http'
 
-export async function getRules(businessAccountId = null) {
-  const url = businessAccountId
-    ? `/app/meta-campaigns/rules?business_account_id=${businessAccountId}`
+export async function getRules(adAccountId = null) {
+  const url = adAccountId
+    ? `/app/meta-campaigns/rules?ad_account_id=${adAccountId}`
     : '/app/meta-campaigns/rules'
   return await get(url)
 }

@@ -6,7 +6,7 @@ import sys
 from sqlalchemy import text
 from app.core.db import engine, Base
 from app.auth.models import User
-from app.features.meta_campaigns.models import BusinessAccount, CampaignRule, RuleLog
+from app.features.meta_campaigns.models import AdAccount, CampaignRule, RuleLog
 import logging
 
 logging.basicConfig(level=logging.INFO)

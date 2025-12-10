@@ -19,14 +19,11 @@ export function useAuthStore() {
 
   async function login(email, password) {
     try {
-      console.log('Attempting login with:', email)
       const response = await loginApi(email, password)
-      console.log('Login response received:', response)
       localStorage.setItem('pfm_token', response.access_token)
       await fetchMe()
       return { success: true }
     } catch (error) {
-      console.error('Login error:', error)
       return { success: false, error: error.message || 'Login failed' }
     }
   }
@@ -48,21 +45,16 @@ export function useAuthStore() {
     state.loadingUser = true
     try {
       const userData = await meApi()
-      console.log('User data received:', userData)
       state.user = userData
-      console.log('User state set:', state.user)
     } catch (error) {
-      console.error('Failed to fetch user:', error)
       // Only clear token if it's a 401 (unauthorized) error
       // Other errors (network, etc.) shouldn't log us out
       if (error.status === 401 || (error.message && error.message.includes('401'))) {
-        console.log('Token invalid (401), clearing...')
         localStorage.removeItem('pfm_token')
         state.user = null
       } else {
         // For other errors, keep the token but don't set user
         // This allows retry on next navigation
-        console.log('Non-auth error, keeping token for retry:', error.message)
       }
     } finally {
       state.loadingUser = false

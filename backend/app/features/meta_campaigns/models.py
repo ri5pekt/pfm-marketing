@@ -4,8 +4,8 @@ from sqlalchemy.sql import func
 from app.core.db import Base
 
 
-class BusinessAccount(Base):
-    __tablename__ = "business_accounts"
+class AdAccount(Base):
+    __tablename__ = "ad_accounts"
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False, unique=True)
@@ -14,18 +14,20 @@ class BusinessAccount(Base):
     meta_access_token = Column(String, nullable=True)  # Encrypted in production
     slack_webhook_url = Column(String, nullable=True)  # Slack webhook URL for notifications
     is_default = Column(Boolean, default=False)
+    connection_status = Column(Boolean, nullable=True)  # True if connection is active, False if failed, None if not tested
+    connection_last_checked = Column(DateTime(timezone=True), nullable=True)  # Last time connection was tested
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     # Relationship to rules
-    rules = relationship("CampaignRule", back_populates="business_account", cascade="all, delete-orphan")
+    rules = relationship("CampaignRule", back_populates="ad_account", cascade="all, delete-orphan")
 
 
 class CampaignRule(Base):
     __tablename__ = "campaign_rules"
 
     id = Column(Integer, primary_key=True, index=True)
-    business_account_id = Column(Integer, ForeignKey("business_accounts.id"), nullable=False, index=True)
+    ad_account_id = Column(Integer, ForeignKey("ad_accounts.id"), nullable=False, index=True)
     name = Column(String, nullable=False)
     description = Column(Text, nullable=True)
     enabled = Column(Boolean, default=True)
@@ -39,8 +41,8 @@ class CampaignRule(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
-    # Relationship to business account
-    business_account = relationship("BusinessAccount", back_populates="rules")
+    # Relationship to ad account
+    ad_account = relationship("AdAccount", back_populates="rules")
 
 
 class RuleLog(Base):

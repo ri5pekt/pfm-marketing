@@ -28,3 +28,7 @@ export async function getBusinessAccountCampaigns(accountId) {
   return await get(`/app/meta-campaigns/business-accounts/${accountId}/campaigns`)
 }
 
+export async function testBusinessAccountConnection(accountId) {
+  return await post(`/app/meta-campaigns/business-accounts/${accountId}/test-connection`)
+}
+
