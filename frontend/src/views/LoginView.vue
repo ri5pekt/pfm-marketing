@@ -194,19 +194,22 @@ async function handleLogin() {
 
 .login-button {
     margin-top: 1rem;
-    background: #4ade80 !important;
-    border: none !important;
     padding: 0.75rem;
     font-weight: 600;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 0.5rem;
-    color: white !important;
 }
 
-.login-button:hover {
-    background: #22c55e !important;
+.login-button.p-button {
+    background: #4ade80;
+    border: none;
+    color: white;
+}
+
+.login-button.p-button:hover {
+    background: #22c55e;
 }
 
 .login-button :deep(.p-button-label) {

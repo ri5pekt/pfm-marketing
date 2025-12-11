@@ -32,6 +32,11 @@
                         <Tag v-if="slotProps.data.is_default" value="Default" severity="success" />
                     </template>
                 </Column>
+                <Column header="Rules" sortable>
+                    <template #body="slotProps">
+                        {{ getRulesCountForAccount(slotProps.data.id) }}
+                    </template>
+                </Column>
                 <Column header="Actions">
                     <template #body="slotProps">
                         <div class="action-buttons">
@@ -122,7 +127,7 @@
                         <template #body="slotProps">
                             <div class="clickable-row" @click.stop="onCampaignClick({ data: slotProps.data })">
                                 {{ slotProps.data.name }}
-                                <i class="pi pi-chevron-right" style="margin-left: 0.5rem; color: #6b7280;"></i>
+                                <i class="pi pi-chevron-right" style="margin-left: 0.5rem; color: #6b7280"></i>
                             </div>
                         </template>
                     </Column>
@@ -167,7 +172,7 @@
                         <template #body="slotProps">
                             <div class="clickable-row" @click.stop="onAdSetClick({ data: slotProps.data })">
                                 {{ slotProps.data.name }}
-                                <i class="pi pi-chevron-right" style="margin-left: 0.5rem; color: #6b7280;"></i>
+                                <i class="pi pi-chevron-right" style="margin-left: 0.5rem; color: #6b7280"></i>
                             </div>
                         </template>
                     </Column>
@@ -382,12 +387,15 @@
                                 v-else-if="connectionStatus === false"
                                 class="pi pi-times-circle connection-status-icon error"
                             ></i>
-                            <i
-                                v-else
-                                class="pi pi-question-circle connection-status-icon unknown"
-                            ></i>
+                            <i v-else class="pi pi-question-circle connection-status-icon unknown"></i>
                             <span class="connection-status-text">
-                                {{ connectionStatus === true ? 'Active' : connectionStatus === false ? 'Failed' : 'Not Tested' }}
+                                {{
+                                    connectionStatus === true
+                                        ? "Active"
+                                        : connectionStatus === false
+                                        ? "Failed"
+                                        : "Not Tested"
+                                }}
                             </span>
                         </div>
                         <div v-if="connectionLastChecked" class="connection-last-checked">
@@ -410,11 +418,7 @@
             </div>
             <template #footer>
                 <Button label="Cancel" severity="secondary" @click="closeAccountDialog" />
-                <Button
-                    :label="editingAccount ? 'Update' : 'Create'"
-                    @click="saveAdAccount"
-                    :loading="savingAccount"
-                />
+                <Button :label="editingAccount ? 'Update' : 'Create'" @click="saveAdAccount" :loading="savingAccount" />
             </template>
         </Dialog>
 
@@ -426,652 +430,751 @@
             :style="{ maxWidth: '900px', width: '90vw', maxHeight: '90vh' }"
             class="rule-builder-dialog"
         >
-            <div class="form-content">
-                <!-- SECTION 1: BASIC INFO -->
-                <div class="form-section">
-                    <h3 class="section-title">1. Basic Info</h3>
-                    <div class="field">
-                        <label>Rule Name *</label>
-                        <InputText v-model="ruleForm.name" class="w-full" :class="{ 'p-invalid': formErrors.name }" />
-                        <small v-if="formErrors.name" class="p-error">{{ formErrors.name }}</small>
-                    </div>
-                    <div class="field">
-                        <label>Description</label>
-                        <Textarea v-model="ruleForm.description" class="w-full" rows="3" />
-                    </div>
-                    <div v-if="ruleForm.ruleLevel" class="field">
-                        <div class="flex align-items-center gap-2">
-                            <InputSwitch v-model="ruleForm.enabled" inputId="enabled" />
-                            <label for="enabled" class="field-label">Enabled</label>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- SECTION 2: LEVEL AND SCOPE -->
-                <div class="form-section">
-                    <h3 class="section-title">2. Level and Scope</h3>
-
-                    <!-- 2A: Rule Level -->
-                    <div class="subsection">
-                        <h4 class="subsection-title">2A. Rule Level</h4>
-                        <div class="field">
-                            <label>Rule Level *</label>
-                            <Select
-                                v-model="ruleForm.ruleLevel"
-                                :options="ruleLevelOptions"
-                                optionLabel="label"
-                                optionValue="value"
-                                placeholder="Select rule level"
-                                class="w-full"
-                                :class="{ 'p-invalid': formErrors.ruleLevel }"
-                                @change="onRuleLevelChange"
-                            />
-                            <small v-if="formErrors.ruleLevel" class="p-error">{{ formErrors.ruleLevel }}</small>
-                        </div>
-                    </div>
-
-                    <!-- 2B: Scope Filters -->
-                    <div class="subsection">
-                        <h4 class="subsection-title">2B. Scope Filters</h4>
-                        <div v-if="ruleForm.scopeFilters.length === 0" class="empty-scope">
-                            <p>No scope filters defined.</p>
-                        </div>
-                        <div v-else class="scope-filters-list">
-                            <div v-for="(scope, index) in ruleForm.scopeFilters" :key="index" class="scope-filter-item">
-                                <div class="scope-filter-header">
-                                    <strong>{{ getScopeTypeLabel(scope.type) }}</strong>
-                                    <Button
-                                        icon="pi pi-times"
-                                        severity="danger"
-                                        text
-                                        rounded
-                                        size="small"
-                                        @click="removeScopeFilter(index)"
-                                        v-tooltip.top="'Remove'"
-                                    />
-                                </div>
-                                <div class="scope-filter-content">
-                                    <!-- Name contains -->
-                                    <div v-if="scope.type === 'name_contains'" class="field">
-                                        <label>Keywords *</label>
-                                        <Chips
-                                            v-model="scope.value"
-                                            placeholder="Type keyword and press Enter to add"
-                                            class="w-full"
-                                            :class="{
-                                                'p-invalid':
-                                                    formErrors.scopeFilters &&
-                                                    (!Array.isArray(scope.value) || scope.value.length === 0),
-                                            }"
-                                            @add="
-                                                () => {
-                                                    formErrors.scopeFilters = '';
-                                                }
-                                            "
-                                            @remove="() => {}"
-                                        />
-                                        <small
-                                            v-if="
-                                                formErrors.scopeFilters &&
-                                                (!Array.isArray(scope.value) || scope.value.length === 0)
-                                            "
-                                            class="p-error"
-                                        >
-                                            Please add at least one keyword by typing and pressing Enter
-                                        </small>
-                                        <small v-else class="p-text-secondary"
-                                            >Type a keyword and press Enter to add it</small
-                                        >
-                                        <small
-                                            v-if="scope.value && Array.isArray(scope.value) && scope.value.length > 0"
-                                            class="p-text-secondary mt-1 block"
-                                        >
-                                            Added keywords ({{ scope.value.length }}): {{ scope.value.join(", ") }}
-                                        </small>
-                                    </div>
-                                    <!-- IDs -->
-                                    <div v-else-if="scope.type === 'ids'" class="field">
-                                        <label
-                                            >{{
-                                                ruleForm.ruleLevel === "ad"
-                                                    ? "Ad ID"
-                                                    : ruleForm.ruleLevel === "ad_set"
-                                                    ? "Ad Set ID"
-                                                    : "IDs"
-                                            }}
-                                            *</label
-                                        >
-                                        <Chips
-                                            v-model="scope.value"
-                                            placeholder="Type ID and press Enter to add"
-                                            class="w-full"
-                                            :class="{
-                                                'p-invalid':
-                                                    formErrors.scopeFilters &&
-                                                    (!Array.isArray(scope.value) || scope.value.length === 0),
-                                            }"
-                                            @add="
-                                                () => {
-                                                    formErrors.scopeFilters = '';
-                                                }
-                                            "
-                                            @remove="() => {}"
-                                        />
-                                        <small
-                                            v-if="
-                                                formErrors.scopeFilters &&
-                                                (!Array.isArray(scope.value) || scope.value.length === 0)
-                                            "
-                                            class="p-error"
-                                        >
-                                            Please add at least one ID by typing and pressing Enter
-                                        </small>
-                                        <small v-else class="p-text-secondary"
-                                            >Type an ID and press Enter to add it</small
-                                        >
-                                        <small
-                                            v-if="scope.value && Array.isArray(scope.value) && scope.value.length > 0"
-                                            class="p-text-secondary mt-1 block"
-                                        >
-                                            Added IDs ({{ scope.value.length }}): {{ scope.value.join(", ") }}
-                                        </small>
-                                    </div>
-                                    <!-- Campaign Name contains -->
-                                    <div v-else-if="scope.type === 'campaign_name_contains'" class="field">
-                                        <label>Keywords *</label>
-                                        <Chips
-                                            v-model="scope.value"
-                                            placeholder="Type keyword and press Enter to add"
-                                            class="w-full"
-                                            :class="{
-                                                'p-invalid':
-                                                    formErrors.scopeFilters &&
-                                                    (!Array.isArray(scope.value) || scope.value.length === 0),
-                                            }"
-                                            @add="
-                                                () => {
-                                                    formErrors.scopeFilters = '';
-                                                }
-                                            "
-                                            @remove="() => {}"
-                                        />
-                                        <small
-                                            v-if="
-                                                formErrors.scopeFilters &&
-                                                (!Array.isArray(scope.value) || scope.value.length === 0)
-                                            "
-                                            class="p-error"
-                                        >
-                                            Please add at least one keyword by typing and pressing Enter
-                                        </small>
-                                        <small v-else class="p-text-secondary"
-                                            >Type a keyword and press Enter to add it</small
-                                        >
-                                        <small
-                                            v-if="scope.value && Array.isArray(scope.value) && scope.value.length > 0"
-                                            class="p-text-secondary mt-1 block"
-                                        >
-                                            Added keywords ({{ scope.value.length }}): {{ scope.value.join(", ") }}
-                                        </small>
-                                    </div>
-                                    <!-- Campaign IDs -->
-                                    <div v-else-if="scope.type === 'campaign_ids'" class="field">
-                                        <label>Campaign IDs *</label>
-                                        <Chips
-                                            v-model="scope.value"
-                                            placeholder="Type campaign ID and press Enter to add"
-                                            class="w-full"
-                                            :class="{
-                                                'p-invalid':
-                                                    formErrors.scopeFilters &&
-                                                    (!Array.isArray(scope.value) || scope.value.length === 0),
-                                            }"
-                                            @add="
-                                                () => {
-                                                    formErrors.scopeFilters = '';
-                                                }
-                                            "
-                                            @remove="() => {}"
-                                        />
-                                        <small
-                                            v-if="
-                                                formErrors.scopeFilters &&
-                                                (!Array.isArray(scope.value) || scope.value.length === 0)
-                                            "
-                                            class="p-error"
-                                        >
-                                            Please add at least one campaign ID by typing and pressing Enter
-                                        </small>
-                                        <small v-else class="p-text-secondary"
-                                            >Type a campaign ID and press Enter to add it</small
-                                        >
-                                        <small
-                                            v-if="scope.value && Array.isArray(scope.value) && scope.value.length > 0"
-                                            class="p-text-secondary mt-1 block"
-                                        >
-                                            Added campaign IDs ({{ scope.value.length }}): {{ scope.value.join(", ") }}
-                                        </small>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="field mt-3">
-                            <Button
-                                label="Add Scope"
-                                icon="pi pi-plus"
-                                severity="secondary"
-                                outlined
-                                @click="showAddScopeDialog = true"
-                                :disabled="availableScopeTypes.length === 0"
-                            />
-                        </div>
-                    </div>
-                </div>
-
-                <!-- SECTION 3: TIME RANGE -->
-                <div v-if="ruleForm.ruleLevel" class="form-section">
-                    <h3 class="section-title">3. Time Range (Data Window)</h3>
-                    <div class="field">
-                        <label>Time Unit *</label>
-                        <Select
-                            v-model="ruleForm.timeRangeUnit"
-                            :options="timeRangeUnitOptions"
-                            optionLabel="label"
-                            optionValue="value"
-                            placeholder="Select time unit"
-                            class="w-full"
-                            :class="{ 'p-invalid': formErrors.timeRangeUnit }"
-                        />
-                        <small v-if="formErrors.timeRangeUnit" class="p-error">{{ formErrors.timeRangeUnit }}</small>
-                    </div>
-                    <div class="field">
-                        <label>Amount *</label>
-                        <InputNumber
-                            v-model="ruleForm.timeRangeAmount"
-                            :min="1"
-                            placeholder="Enter amount"
-                            class="w-full"
-                            :class="{ 'p-invalid': formErrors.timeRangeAmount }"
-                        />
-                        <small v-if="formErrors.timeRangeAmount" class="p-error">{{
-                            formErrors.timeRangeAmount
-                        }}</small>
-                    </div>
-                    <div class="field">
-                        <div class="flex align-items-center gap-2">
-                            <InputSwitch
-                                v-model="ruleForm.excludeToday"
-                                inputId="excludeToday"
-                                :disabled="ruleForm.timeRangeUnit === 'minutes' || ruleForm.timeRangeUnit === 'hours'"
-                            />
-                            <label for="excludeToday" class="field-label">Exclude today</label>
-                        </div>
-                        <small
-                            class="p-text-secondary"
-                            v-if="ruleForm.timeRangeUnit === 'minutes' || ruleForm.timeRangeUnit === 'hours'"
-                        >
-                            (No effect for minutes or hours)
-                        </small>
-                    </div>
-                </div>
-
-                <!-- SECTION 4: CONDITIONS -->
-                <div v-if="ruleForm.ruleLevel" class="form-section">
-                    <h3 class="section-title">4. Conditions</h3>
-                    <div v-if="ruleForm.conditions.length === 0" class="empty-message">
-                        <p>No conditions defined. Click "Add Condition" to add one.</p>
-                    </div>
-                    <div v-else class="conditions-list">
-                        <div v-for="(condition, index) in ruleForm.conditions" :key="index" class="condition-item">
-                            <div class="condition-header">
-                                <strong>Condition {{ index + 1 }}</strong>
-                                <Button
-                                    icon="pi pi-times"
-                                    severity="danger"
-                                    text
-                                    rounded
-                                    size="small"
-                                    @click="removeCondition(index)"
-                                    v-tooltip.top="'Remove'"
-                                />
-                            </div>
-                            <div class="condition-fields">
-                                <div class="field">
-                                    <label>Field *</label>
-                                    <Select
-                                        v-model="condition.field"
-                                        :options="availableConditionFields"
-                                        optionLabel="label"
-                                        optionValue="value"
-                                        placeholder="Select field"
-                                        class="w-full"
-                                        @change="onConditionFieldChange(index)"
-                                    />
-                                </div>
-                                <div class="field">
-                                    <label>Operator *</label>
-                                    <Select
-                                        v-model="condition.operator"
-                                        :options="operatorOptions"
-                                        optionLabel="label"
-                                        optionValue="value"
-                                        placeholder="Select operator"
-                                        class="w-full"
-                                    />
-                                </div>
-                                <div class="field">
-                                    <label>Value *</label>
-                                    <Select
-                                        v-if="condition.field === 'status' || condition.field === 'campaign_status'"
-                                        v-model="condition.value"
-                                        :options="statusOptions"
-                                        optionLabel="label"
-                                        optionValue="value"
-                                        placeholder="Select status"
-                                        class="w-full"
-                                    />
-                                    <InputNumber
-                                        v-else-if="isNumericField(condition.field)"
-                                        v-model="condition.value"
-                                        :min="0"
-                                        :step="0.01"
-                                        placeholder="Enter value"
-                                        class="w-full"
-                                    />
-                                    <InputText
-                                        v-else
-                                        v-model="condition.value"
-                                        :placeholder="getValuePlaceholder(condition.field)"
-                                        class="w-full"
-                                    />
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="field mt-3">
-                        <Button
-                            label="Add Condition"
-                            icon="pi pi-plus"
-                            severity="secondary"
-                            outlined
-                            @click="addCondition"
-                            :disabled="!ruleForm.ruleLevel"
-                        />
-                    </div>
-                </div>
-
-                <!-- SECTION 5: ACTIONS -->
-                <div v-if="ruleForm.ruleLevel" class="form-section">
-                    <h3 class="section-title">5. Actions</h3>
-                    <div v-if="ruleForm.actions.length === 0" class="empty-message">
-                        <p>No actions defined. Click "Add Action" to add one.</p>
-                    </div>
-                    <div v-else class="actions-list">
-                        <div v-for="(action, index) in ruleForm.actions" :key="index" class="action-item">
-                            <div class="action-header">
-                                <strong>Action {{ index + 1 }}</strong>
-                                <Button
-                                    icon="pi pi-times"
-                                    severity="danger"
-                                    text
-                                    rounded
-                                    size="small"
-                                    @click="removeAction(index)"
-                                    v-tooltip.top="'Remove'"
-                                />
-                            </div>
-                            <div class="action-fields">
-                                <div class="field">
-                                    <label>Action Type *</label>
-                                    <Select
-                                        v-model="action.type"
-                                        :options="availableActionTypes"
-                                        optionLabel="label"
-                                        optionValue="value"
-                                        placeholder="Select action type"
-                                        class="w-full"
-                                        @change="onActionTypeChange(index)"
-                                    />
-                                </div>
-                                <!-- Set Status action fields -->
-                                <div v-if="action.type === 'set_status'" class="field">
-                                    <label>Status *</label>
-                                    <Select
-                                        v-model="action.status"
-                                        :options="statusOptions"
-                                        optionLabel="label"
-                                        optionValue="value"
-                                        placeholder="Select status"
-                                        class="w-full"
-                                    />
-                                </div>
-                                <!-- Send Notification action - no additional fields, just notification -->
-                                <div v-if="action.type === 'send_notification'" class="field">
-                                    <small class="p-text-secondary"
-                                        >This action will only send a Slack notification without making any changes to
-                                        the item.</small
-                                    >
-                                </div>
-                                <!-- Adjust Daily Budget action fields -->
-                                <template v-if="action.type === 'adjust_daily_budget'">
-                                    <div class="field">
-                                        <label>Direction *</label>
-                                        <Select
-                                            v-model="action.direction"
-                                            :options="budgetDirectionOptions"
-                                            optionLabel="label"
-                                            optionValue="value"
-                                            placeholder="Select direction"
-                                            class="w-full"
-                                        />
-                                    </div>
-                                    <div class="field">
-                                        <label>Percent Value *</label>
-                                        <InputNumber
-                                            v-model="action.percent"
-                                            :min="0"
-                                            :max="100"
-                                            :step="0.01"
-                                            placeholder="Enter percentage"
-                                            class="w-full"
-                                        />
-                                    </div>
-                                    <div class="field">
-                                        <label>Minimum Cap</label>
-                                        <InputNumber
-                                            v-model="action.minCap"
-                                            :min="0"
-                                            :step="0.01"
-                                            placeholder="Enter minimum cap"
-                                            class="w-full"
-                                        />
-                                    </div>
-                                    <div class="field">
-                                        <label>Maximum Cap</label>
-                                        <InputNumber
-                                            v-model="action.maxCap"
-                                            :min="0"
-                                            :step="0.01"
-                                            placeholder="Enter maximum cap"
-                                            class="w-full"
-                                        />
-                                    </div>
-                                </template>
-                            </div>
-                            <!-- Send Slack Notification checkbox - separate row at bottom -->
-                            <!-- For send_notification action, always show as enabled (but still show checkbox for consistency) -->
-                            <div class="action-slack-notification">
-                                <div class="flex align-items-center gap-2">
-                                    <Checkbox
-                                        v-model="action.sendSlackNotification"
-                                        :binary="true"
-                                        :inputId="`slack-notification-${index}`"
-                                        :disabled="action.type === 'send_notification'"
-                                    />
-                                    <label :for="`slack-notification-${index}`" class="slack-notification-label"
-                                        >Send slack notification</label
-                                    >
-                                    <small v-if="action.type === 'send_notification'" class="p-text-secondary ml-2"
-                                        >(always enabled for notification actions)</small
-                                    >
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="field mt-3">
-                        <Button
-                            label="Add Action"
-                            icon="pi pi-plus"
-                            severity="secondary"
-                            outlined
-                            @click="addAction"
-                            :disabled="!ruleForm.ruleLevel"
-                        />
-                    </div>
-                </div>
-
-                <!-- SECTION 6: EXECUTION SCHEDULE -->
-                <div v-if="ruleForm.ruleLevel" class="form-section scheduling-section">
-                    <h3 class="section-title">6. Execution Schedule</h3>
-
-                    <div class="field">
-                        <label>Period</label>
-                        <Select
-                            v-model="ruleForm.schedulePeriod"
-                            :options="periodOptions"
-                            optionLabel="label"
-                            optionValue="value"
-                            placeholder="Select period (optional)"
-                            class="w-full"
-                            :class="{ 'p-invalid': scheduleFormErrors.period }"
-                            @change="onSchedulePeriodChange"
-                        />
-                        <small v-if="scheduleFormErrors.period" class="p-error">{{ scheduleFormErrors.period }}</small>
-                    </div>
-
-                    <div
-                        class="field"
-                        v-if="
-                            ruleForm.schedulePeriod &&
-                            ruleForm.schedulePeriod !== 'none' &&
-                            ruleForm.schedulePeriod !== 'daily_custom'
-                        "
-                    >
-                        <label>Frequency *</label>
-                        <InputNumber
-                            v-model="ruleForm.scheduleFrequency"
-                            :min="1"
-                            placeholder="Every X"
-                            class="w-full"
-                            :class="{ 'p-invalid': scheduleFormErrors.frequency }"
-                        />
-                        <small v-if="scheduleFormErrors.frequency" class="p-error">{{
-                            scheduleFormErrors.frequency
-                        }}</small>
-                        <small class="p-text-secondary">
-                            <span v-if="ruleForm.schedulePeriod === 'minute'">Every X minute(s)</span>
-                            <span v-else-if="ruleForm.schedulePeriod === 'hourly'">Every X hour(s)</span>
-                            <span v-else-if="ruleForm.schedulePeriod === 'daily'">Every X day(s)</span>
-                            <span v-else-if="ruleForm.schedulePeriod === 'weekly'">Every X week(s)</span>
-                            <span v-else-if="ruleForm.schedulePeriod === 'monthly'">Every X month(s)</span>
-                        </small>
-                    </div>
-
-                    <div
-                        class="field"
-                        v-if="
-                            ruleForm.schedulePeriod &&
-                            ruleForm.schedulePeriod !== 'none' &&
-                            (ruleForm.schedulePeriod === 'daily' ||
-                                ruleForm.schedulePeriod === 'weekly' ||
-                                ruleForm.schedulePeriod === 'monthly')
-                        "
-                    >
-                        <label>Time *</label>
-                        <InputText
-                            v-model="ruleForm.scheduleTime"
-                            placeholder="HH:MM (24-hour format, e.g., 09:00)"
-                            class="w-full"
-                            :class="{ 'p-invalid': scheduleFormErrors.time }"
-                        />
-                        <small v-if="scheduleFormErrors.time" class="p-error">{{ scheduleFormErrors.time }}</small>
-                        <small class="p-text-secondary"
-                            >Time in 24-hour format (e.g., 09:00 for 9 AM, 14:30 for 2:30 PM)</small
-                        >
-                    </div>
-
-                    <div class="field" v-if="ruleForm.schedulePeriod && ruleForm.schedulePeriod === 'weekly'">
-                        <label>Day of Week *</label>
-                        <Select
-                            v-model="ruleForm.scheduleDayOfWeek"
-                            :options="dayOfWeekOptions"
-                            optionLabel="label"
-                            optionValue="value"
-                            placeholder="Select day"
-                            class="w-full"
-                            :class="{ 'p-invalid': scheduleFormErrors.dayOfWeek }"
-                        />
-                        <small v-if="scheduleFormErrors.dayOfWeek" class="p-error">{{
-                            scheduleFormErrors.dayOfWeek
-                        }}</small>
-                    </div>
-
-                    <div class="field" v-if="ruleForm.schedulePeriod && ruleForm.schedulePeriod === 'monthly'">
-                        <label>Day of Month *</label>
-                        <InputNumber
-                            v-model="ruleForm.scheduleDayOfMonth"
-                            :min="1"
-                            :max="31"
-                            placeholder="1-31"
-                            class="w-full"
-                            :class="{ 'p-invalid': scheduleFormErrors.dayOfMonth }"
-                        />
-                        <small v-if="scheduleFormErrors.dayOfMonth" class="p-error">{{
-                            scheduleFormErrors.dayOfMonth
-                        }}</small>
-                    </div>
-
-                    <!-- Custom Daily Schedule: Day/Time Picker -->
-                    <div class="field" v-if="ruleForm.schedulePeriod === 'daily_custom'">
-                        <label>Select Days and Times *</label>
-                        <div class="custom-daily-schedule">
-                            <div v-for="day in weekDays" :key="day.value" class="custom-daily-row">
-                                <div class="day-checkbox">
-                                    <Checkbox
-                                        :modelValue="!!ruleForm.customDailySchedule[day.value]"
-                                        @update:modelValue="(val) => onDayToggle(day.value, val)"
-                                        :inputId="`day-${day.value}`"
-                                        :binary="true"
-                                    />
-                                    <label :for="`day-${day.value}`" class="day-label">{{ day.label }}</label>
-                                </div>
+            <TabView v-model:activeIndex="activeTabIndex">
+                <TabPanel header="Form Editor">
+                    <div class="form-content">
+                        <!-- SECTION 1: BASIC INFO -->
+                        <div class="form-section">
+                            <h3 class="section-title">1. Basic Info</h3>
+                            <div class="field">
+                                <label>Rule Name *</label>
                                 <InputText
-                                    v-model="ruleForm.customDailySchedule[day.value + '_time']"
-                                    :disabled="!ruleForm.customDailySchedule[day.value]"
-                                    placeholder="HH:MM (e.g., 09:00)"
-                                    class="time-input"
-                                    :class="{ 'p-invalid': scheduleFormErrors[`day_${day.value}_time`] }"
-                                    @blur="validateTime(day.value)"
+                                    v-model="ruleForm.name"
+                                    class="w-full"
+                                    :class="{ 'p-invalid': formErrors.name }"
+                                />
+                                <small v-if="formErrors.name" class="p-error">{{ formErrors.name }}</small>
+                            </div>
+                            <div class="field">
+                                <label>Description</label>
+                                <Textarea v-model="ruleForm.description" class="w-full" rows="3" />
+                            </div>
+                            <div v-if="ruleForm.ruleLevel" class="field">
+                                <div class="flex align-items-center gap-2">
+                                    <InputSwitch v-model="ruleForm.enabled" inputId="enabled" />
+                                    <label for="enabled" class="field-label">Enabled</label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- SECTION 2: LEVEL AND SCOPE -->
+                        <div class="form-section">
+                            <h3 class="section-title">2. Level and Scope</h3>
+
+                            <!-- 2A: Rule Level -->
+                            <div class="subsection">
+                                <h4 class="subsection-title">2A. Rule Level</h4>
+                                <div class="field">
+                                    <label>Rule Level *</label>
+                                    <Select
+                                        v-model="ruleForm.ruleLevel"
+                                        :options="ruleLevelOptions"
+                                        optionLabel="label"
+                                        optionValue="value"
+                                        placeholder="Select rule level"
+                                        class="w-full"
+                                        :class="{ 'p-invalid': formErrors.ruleLevel }"
+                                        @change="onRuleLevelChange"
+                                    />
+                                    <small v-if="formErrors.ruleLevel" class="p-error">{{
+                                        formErrors.ruleLevel
+                                    }}</small>
+                                </div>
+                            </div>
+
+                            <!-- 2B: Scope Filters -->
+                            <div class="subsection">
+                                <h4 class="subsection-title">2B. Scope Filters</h4>
+                                <div v-if="ruleForm.scopeFilters.length === 0" class="empty-scope">
+                                    <p>No scope filters defined.</p>
+                                </div>
+                                <div v-else class="scope-filters-list">
+                                    <div
+                                        v-for="(scope, index) in ruleForm.scopeFilters"
+                                        :key="index"
+                                        class="scope-filter-item"
+                                    >
+                                        <div class="scope-filter-header">
+                                            <strong>{{ getScopeTypeLabel(scope.type) }}</strong>
+                                            <Button
+                                                icon="pi pi-times"
+                                                severity="danger"
+                                                text
+                                                rounded
+                                                size="small"
+                                                @click="removeScopeFilter(index)"
+                                                v-tooltip.top="'Remove'"
+                                            />
+                                        </div>
+                                        <div class="scope-filter-content">
+                                            <!-- Name contains -->
+                                            <div v-if="scope.type === 'name_contains'" class="field">
+                                                <label>Keywords *</label>
+                                                <Chips
+                                                    v-model="scope.value"
+                                                    placeholder="Type keyword and press Enter to add"
+                                                    class="w-full"
+                                                    :class="{
+                                                        'p-invalid':
+                                                            formErrors.scopeFilters &&
+                                                            (!Array.isArray(scope.value) || scope.value.length === 0),
+                                                    }"
+                                                    @add="
+                                                        () => {
+                                                            formErrors.scopeFilters = '';
+                                                        }
+                                                    "
+                                                    @remove="() => {}"
+                                                />
+                                                <small
+                                                    v-if="
+                                                        formErrors.scopeFilters &&
+                                                        (!Array.isArray(scope.value) || scope.value.length === 0)
+                                                    "
+                                                    class="p-error"
+                                                >
+                                                    Please add at least one keyword by typing and pressing Enter
+                                                </small>
+                                                <small v-else class="p-text-secondary"
+                                                    >Type a keyword and press Enter to add it</small
+                                                >
+                                                <small
+                                                    v-if="
+                                                        scope.value &&
+                                                        Array.isArray(scope.value) &&
+                                                        scope.value.length > 0
+                                                    "
+                                                    class="p-text-secondary mt-1 block"
+                                                >
+                                                    Added keywords ({{ scope.value.length }}):
+                                                    {{ scope.value.join(", ") }}
+                                                </small>
+                                            </div>
+                                            <!-- IDs -->
+                                            <div v-else-if="scope.type === 'ids'" class="field">
+                                                <label
+                                                    >{{
+                                                        ruleForm.ruleLevel === "ad"
+                                                            ? "Ad ID"
+                                                            : ruleForm.ruleLevel === "ad_set"
+                                                            ? "Ad Set ID"
+                                                            : "IDs"
+                                                    }}
+                                                    *</label
+                                                >
+                                                <Chips
+                                                    v-model="scope.value"
+                                                    placeholder="Type ID and press Enter to add"
+                                                    class="w-full"
+                                                    :class="{
+                                                        'p-invalid':
+                                                            formErrors.scopeFilters &&
+                                                            (!Array.isArray(scope.value) || scope.value.length === 0),
+                                                    }"
+                                                    @add="
+                                                        () => {
+                                                            formErrors.scopeFilters = '';
+                                                        }
+                                                    "
+                                                    @remove="() => {}"
+                                                />
+                                                <small
+                                                    v-if="
+                                                        formErrors.scopeFilters &&
+                                                        (!Array.isArray(scope.value) || scope.value.length === 0)
+                                                    "
+                                                    class="p-error"
+                                                >
+                                                    Please add at least one ID by typing and pressing Enter
+                                                </small>
+                                                <small v-else class="p-text-secondary"
+                                                    >Type an ID and press Enter to add it</small
+                                                >
+                                                <small
+                                                    v-if="
+                                                        scope.value &&
+                                                        Array.isArray(scope.value) &&
+                                                        scope.value.length > 0
+                                                    "
+                                                    class="p-text-secondary mt-1 block"
+                                                >
+                                                    Added IDs ({{ scope.value.length }}): {{ scope.value.join(", ") }}
+                                                </small>
+                                            </div>
+                                            <!-- Campaign Name contains -->
+                                            <div v-else-if="scope.type === 'campaign_name_contains'" class="field">
+                                                <label>Keywords *</label>
+                                                <Chips
+                                                    v-model="scope.value"
+                                                    placeholder="Type keyword and press Enter to add"
+                                                    class="w-full"
+                                                    :class="{
+                                                        'p-invalid':
+                                                            formErrors.scopeFilters &&
+                                                            (!Array.isArray(scope.value) || scope.value.length === 0),
+                                                    }"
+                                                    @add="
+                                                        () => {
+                                                            formErrors.scopeFilters = '';
+                                                        }
+                                                    "
+                                                    @remove="() => {}"
+                                                />
+                                                <small
+                                                    v-if="
+                                                        formErrors.scopeFilters &&
+                                                        (!Array.isArray(scope.value) || scope.value.length === 0)
+                                                    "
+                                                    class="p-error"
+                                                >
+                                                    Please add at least one keyword by typing and pressing Enter
+                                                </small>
+                                                <small v-else class="p-text-secondary"
+                                                    >Type a keyword and press Enter to add it</small
+                                                >
+                                                <small
+                                                    v-if="
+                                                        scope.value &&
+                                                        Array.isArray(scope.value) &&
+                                                        scope.value.length > 0
+                                                    "
+                                                    class="p-text-secondary mt-1 block"
+                                                >
+                                                    Added keywords ({{ scope.value.length }}):
+                                                    {{ scope.value.join(", ") }}
+                                                </small>
+                                            </div>
+                                            <!-- Campaign IDs -->
+                                            <div v-else-if="scope.type === 'campaign_ids'" class="field">
+                                                <label>Campaign IDs *</label>
+                                                <Chips
+                                                    v-model="scope.value"
+                                                    placeholder="Type campaign ID and press Enter to add"
+                                                    class="w-full"
+                                                    :class="{
+                                                        'p-invalid':
+                                                            formErrors.scopeFilters &&
+                                                            (!Array.isArray(scope.value) || scope.value.length === 0),
+                                                    }"
+                                                    @add="
+                                                        () => {
+                                                            formErrors.scopeFilters = '';
+                                                        }
+                                                    "
+                                                    @remove="() => {}"
+                                                />
+                                                <small
+                                                    v-if="
+                                                        formErrors.scopeFilters &&
+                                                        (!Array.isArray(scope.value) || scope.value.length === 0)
+                                                    "
+                                                    class="p-error"
+                                                >
+                                                    Please add at least one campaign ID by typing and pressing Enter
+                                                </small>
+                                                <small v-else class="p-text-secondary"
+                                                    >Type a campaign ID and press Enter to add it</small
+                                                >
+                                                <small
+                                                    v-if="
+                                                        scope.value &&
+                                                        Array.isArray(scope.value) &&
+                                                        scope.value.length > 0
+                                                    "
+                                                    class="p-text-secondary mt-1 block"
+                                                >
+                                                    Added campaign IDs ({{ scope.value.length }}):
+                                                    {{ scope.value.join(", ") }}
+                                                </small>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="field mt-3">
+                                    <Button
+                                        label="Add Scope"
+                                        icon="pi pi-plus"
+                                        severity="secondary"
+                                        outlined
+                                        @click="showAddScopeDialog = true"
+                                        :disabled="availableScopeTypes.length === 0"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- SECTION 3: TIME RANGE -->
+                        <div v-if="ruleForm.ruleLevel" class="form-section">
+                            <h3 class="section-title">3. Time Range (Data Window)</h3>
+                            <div class="field">
+                                <label>Time Unit *</label>
+                                <Select
+                                    v-model="ruleForm.timeRangeUnit"
+                                    :options="timeRangeUnitOptions"
+                                    optionLabel="label"
+                                    optionValue="value"
+                                    placeholder="Select time unit"
+                                    class="w-full"
+                                    :class="{ 'p-invalid': formErrors.timeRangeUnit }"
+                                />
+                                <small v-if="formErrors.timeRangeUnit" class="p-error">{{
+                                    formErrors.timeRangeUnit
+                                }}</small>
+                            </div>
+                            <div class="field">
+                                <label>Amount *</label>
+                                <InputNumber
+                                    v-model="ruleForm.timeRangeAmount"
+                                    :min="1"
+                                    placeholder="Enter amount"
+                                    class="w-full"
+                                    :class="{ 'p-invalid': formErrors.timeRangeAmount }"
+                                />
+                                <small v-if="formErrors.timeRangeAmount" class="p-error">{{
+                                    formErrors.timeRangeAmount
+                                }}</small>
+                            </div>
+                            <div class="field">
+                                <div class="flex align-items-center gap-2">
+                                    <InputSwitch
+                                        v-model="ruleForm.excludeToday"
+                                        inputId="excludeToday"
+                                        :disabled="
+                                            ruleForm.timeRangeUnit === 'minutes' || ruleForm.timeRangeUnit === 'hours'
+                                        "
+                                    />
+                                    <label for="excludeToday" class="field-label">Exclude today</label>
+                                </div>
+                                <small
+                                    class="p-text-secondary"
+                                    v-if="ruleForm.timeRangeUnit === 'minutes' || ruleForm.timeRangeUnit === 'hours'"
+                                >
+                                    (No effect for minutes or hours)
+                                </small>
+                            </div>
+                        </div>
+
+                        <!-- SECTION 4: CONDITIONS -->
+                        <div v-if="ruleForm.ruleLevel" class="form-section">
+                            <h3 class="section-title">4. Conditions</h3>
+                            <div v-if="ruleForm.conditions.length === 0" class="empty-message">
+                                <p>No conditions defined. Click "Add Condition" to add one.</p>
+                            </div>
+                            <div v-else class="conditions-list">
+                                <div
+                                    v-for="(condition, index) in ruleForm.conditions"
+                                    :key="index"
+                                    class="condition-item"
+                                >
+                                    <div class="condition-header">
+                                        <strong>Condition {{ index + 1 }}</strong>
+                                        <Button
+                                            icon="pi pi-times"
+                                            severity="danger"
+                                            text
+                                            rounded
+                                            size="small"
+                                            @click="removeCondition(index)"
+                                            v-tooltip.top="'Remove'"
+                                        />
+                                    </div>
+                                    <div class="condition-fields">
+                                        <div class="field">
+                                            <label>Field *</label>
+                                            <Select
+                                                v-model="condition.field"
+                                                :options="availableConditionFields"
+                                                optionLabel="label"
+                                                optionValue="value"
+                                                placeholder="Select field"
+                                                class="w-full"
+                                                @change="onConditionFieldChange(index)"
+                                            />
+                                        </div>
+                                        <div class="field">
+                                            <label>Operator *</label>
+                                            <Select
+                                                v-model="condition.operator"
+                                                :options="operatorOptions"
+                                                optionLabel="label"
+                                                optionValue="value"
+                                                placeholder="Select operator"
+                                                class="w-full"
+                                            />
+                                        </div>
+                                        <div class="field">
+                                            <label>Value *</label>
+                                            <Select
+                                                v-if="
+                                                    condition.field === 'status' ||
+                                                    condition.field === 'campaign_status'
+                                                "
+                                                v-model="condition.value"
+                                                :options="statusOptions"
+                                                optionLabel="label"
+                                                optionValue="value"
+                                                placeholder="Select status"
+                                                class="w-full"
+                                            />
+                                            <InputNumber
+                                                v-else-if="isNumericField(condition.field)"
+                                                v-model="condition.value"
+                                                :min="0"
+                                                :step="0.01"
+                                                placeholder="Enter value"
+                                                class="w-full"
+                                            />
+                                            <InputText
+                                                v-else
+                                                v-model="condition.value"
+                                                :placeholder="getValuePlaceholder(condition.field)"
+                                                class="w-full"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="field mt-3">
+                                <Button
+                                    label="Add Condition"
+                                    icon="pi pi-plus"
+                                    severity="secondary"
+                                    outlined
+                                    @click="addCondition"
+                                    :disabled="!ruleForm.ruleLevel"
                                 />
                             </div>
                         </div>
-                        <small v-if="scheduleFormErrors.customDaily" class="p-error">{{
-                            scheduleFormErrors.customDaily
-                        }}</small>
-                        <small class="p-text-secondary">Select days and set execution times in 24-hour format</small>
-                    </div>
 
-                    <div class="field" v-if="ruleForm.schedulePeriod && ruleForm.schedulePeriod !== 'none'">
-                        <label>Timezone</label>
-                        <Select
-                            v-model="ruleForm.scheduleTimezone"
-                            :options="timezoneOptions"
-                            placeholder="Select timezone"
-                            class="w-full"
-                        />
+                        <!-- SECTION 5: ACTIONS -->
+                        <div v-if="ruleForm.ruleLevel" class="form-section">
+                            <h3 class="section-title">5. Actions</h3>
+                            <div v-if="ruleForm.actions.length === 0" class="empty-message">
+                                <p>No actions defined. Click "Add Action" to add one.</p>
+                            </div>
+                            <div v-else class="actions-list">
+                                <div v-for="(action, index) in ruleForm.actions" :key="index" class="action-item">
+                                    <div class="action-header">
+                                        <strong>Action {{ index + 1 }}</strong>
+                                        <Button
+                                            icon="pi pi-times"
+                                            severity="danger"
+                                            text
+                                            rounded
+                                            size="small"
+                                            @click="removeAction(index)"
+                                            v-tooltip.top="'Remove'"
+                                        />
+                                    </div>
+                                    <div class="action-fields">
+                                        <div class="field">
+                                            <label>Action Type *</label>
+                                            <Select
+                                                v-model="action.type"
+                                                :options="availableActionTypes"
+                                                optionLabel="label"
+                                                optionValue="value"
+                                                placeholder="Select action type"
+                                                class="w-full"
+                                                @change="onActionTypeChange(index)"
+                                            />
+                                        </div>
+                                        <!-- Set Status action fields -->
+                                        <div v-if="action.type === 'set_status'" class="field">
+                                            <label>Status *</label>
+                                            <Select
+                                                v-model="action.status"
+                                                :options="statusOptions"
+                                                optionLabel="label"
+                                                optionValue="value"
+                                                placeholder="Select status"
+                                                class="w-full"
+                                            />
+                                        </div>
+                                        <!-- Send Notification action - no additional fields, just notification -->
+                                        <div v-if="action.type === 'send_notification'" class="field">
+                                            <small class="p-text-secondary"
+                                                >This action will only send a Slack notification without making any
+                                                changes to the item.</small
+                                            >
+                                        </div>
+                                        <!-- Adjust Daily Budget action fields -->
+                                        <template v-if="action.type === 'adjust_daily_budget'">
+                                            <div class="field">
+                                                <label>Direction *</label>
+                                                <Select
+                                                    v-model="action.direction"
+                                                    :options="budgetDirectionOptions"
+                                                    optionLabel="label"
+                                                    optionValue="value"
+                                                    placeholder="Select direction"
+                                                    class="w-full"
+                                                />
+                                            </div>
+                                            <div class="field">
+                                                <label>Percent Value *</label>
+                                                <InputNumber
+                                                    v-model="action.percent"
+                                                    :min="0"
+                                                    :max="100"
+                                                    :step="0.01"
+                                                    placeholder="Enter percentage"
+                                                    class="w-full"
+                                                />
+                                            </div>
+                                            <div class="field">
+                                                <label>Minimum Cap</label>
+                                                <InputNumber
+                                                    v-model="action.minCap"
+                                                    :min="0"
+                                                    :step="0.01"
+                                                    placeholder="Enter minimum cap"
+                                                    class="w-full"
+                                                />
+                                            </div>
+                                            <div class="field">
+                                                <label>Maximum Cap</label>
+                                                <InputNumber
+                                                    v-model="action.maxCap"
+                                                    :min="0"
+                                                    :step="0.01"
+                                                    placeholder="Enter maximum cap"
+                                                    class="w-full"
+                                                />
+                                            </div>
+                                        </template>
+                                    </div>
+                                    <!-- Send Slack Notification checkbox - separate row at bottom -->
+                                    <!-- For send_notification action, always show as enabled (but still show checkbox for consistency) -->
+                                    <div class="action-slack-notification">
+                                        <div class="flex align-items-center gap-2">
+                                            <Checkbox
+                                                v-model="action.sendSlackNotification"
+                                                :binary="true"
+                                                :inputId="`slack-notification-${index}`"
+                                                :disabled="action.type === 'send_notification'"
+                                            />
+                                            <label :for="`slack-notification-${index}`" class="slack-notification-label"
+                                                >Send slack notification</label
+                                            >
+                                            <small
+                                                v-if="action.type === 'send_notification'"
+                                                class="p-text-secondary ml-2"
+                                                >(always enabled for notification actions)</small
+                                            >
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="field mt-3">
+                                <Button
+                                    label="Add Action"
+                                    icon="pi pi-plus"
+                                    severity="secondary"
+                                    outlined
+                                    @click="addAction"
+                                    :disabled="!ruleForm.ruleLevel"
+                                />
+                            </div>
+                        </div>
+
+                        <!-- SECTION 6: EXECUTION SCHEDULE -->
+                        <div v-if="ruleForm.ruleLevel" class="form-section scheduling-section">
+                            <h3 class="section-title">6. Execution Schedule</h3>
+
+                            <div class="field">
+                                <label>Period</label>
+                                <Select
+                                    v-model="ruleForm.schedulePeriod"
+                                    :options="periodOptions"
+                                    optionLabel="label"
+                                    optionValue="value"
+                                    placeholder="Select period (optional)"
+                                    class="w-full"
+                                    :class="{ 'p-invalid': scheduleFormErrors.period }"
+                                    @change="onSchedulePeriodChange"
+                                />
+                                <small v-if="scheduleFormErrors.period" class="p-error">{{
+                                    scheduleFormErrors.period
+                                }}</small>
+                            </div>
+
+                            <div
+                                class="field"
+                                v-if="
+                                    ruleForm.schedulePeriod &&
+                                    ruleForm.schedulePeriod !== 'none' &&
+                                    ruleForm.schedulePeriod !== 'daily_custom'
+                                "
+                            >
+                                <label>Frequency *</label>
+                                <InputNumber
+                                    v-model="ruleForm.scheduleFrequency"
+                                    :min="1"
+                                    placeholder="Every X"
+                                    class="w-full"
+                                    :class="{ 'p-invalid': scheduleFormErrors.frequency }"
+                                />
+                                <small v-if="scheduleFormErrors.frequency" class="p-error">{{
+                                    scheduleFormErrors.frequency
+                                }}</small>
+                                <small class="p-text-secondary">
+                                    <span v-if="ruleForm.schedulePeriod === 'minute'">Every X minute(s)</span>
+                                    <span v-else-if="ruleForm.schedulePeriod === 'hourly'">Every X hour(s)</span>
+                                    <span v-else-if="ruleForm.schedulePeriod === 'daily'">Every X day(s)</span>
+                                    <span v-else-if="ruleForm.schedulePeriod === 'weekly'">Every X week(s)</span>
+                                    <span v-else-if="ruleForm.schedulePeriod === 'monthly'">Every X month(s)</span>
+                                </small>
+                            </div>
+
+                            <div
+                                class="field"
+                                v-if="
+                                    ruleForm.schedulePeriod &&
+                                    ruleForm.schedulePeriod !== 'none' &&
+                                    (ruleForm.schedulePeriod === 'daily' ||
+                                        ruleForm.schedulePeriod === 'weekly' ||
+                                        ruleForm.schedulePeriod === 'monthly')
+                                "
+                            >
+                                <label>Time *</label>
+                                <InputText
+                                    v-model="ruleForm.scheduleTime"
+                                    placeholder="HH:MM (24-hour format, e.g., 09:00)"
+                                    class="w-full"
+                                    :class="{ 'p-invalid': scheduleFormErrors.time }"
+                                />
+                                <small v-if="scheduleFormErrors.time" class="p-error">{{
+                                    scheduleFormErrors.time
+                                }}</small>
+                                <small class="p-text-secondary"
+                                    >Time in 24-hour format (e.g., 09:00 for 9 AM, 14:30 for 2:30 PM)</small
+                                >
+                            </div>
+
+                            <div class="field" v-if="ruleForm.schedulePeriod && ruleForm.schedulePeriod === 'weekly'">
+                                <label>Day of Week *</label>
+                                <Select
+                                    v-model="ruleForm.scheduleDayOfWeek"
+                                    :options="dayOfWeekOptions"
+                                    optionLabel="label"
+                                    optionValue="value"
+                                    placeholder="Select day"
+                                    class="w-full"
+                                    :class="{ 'p-invalid': scheduleFormErrors.dayOfWeek }"
+                                />
+                                <small v-if="scheduleFormErrors.dayOfWeek" class="p-error">{{
+                                    scheduleFormErrors.dayOfWeek
+                                }}</small>
+                            </div>
+
+                            <div class="field" v-if="ruleForm.schedulePeriod && ruleForm.schedulePeriod === 'monthly'">
+                                <label>Day of Month *</label>
+                                <InputNumber
+                                    v-model="ruleForm.scheduleDayOfMonth"
+                                    :min="1"
+                                    :max="31"
+                                    placeholder="1-31"
+                                    class="w-full"
+                                    :class="{ 'p-invalid': scheduleFormErrors.dayOfMonth }"
+                                />
+                                <small v-if="scheduleFormErrors.dayOfMonth" class="p-error">{{
+                                    scheduleFormErrors.dayOfMonth
+                                }}</small>
+                            </div>
+
+                            <!-- Custom Daily Schedule: Day/Time Picker -->
+                            <div class="field" v-if="ruleForm.schedulePeriod === 'daily_custom'">
+                                <label>Select Days and Times *</label>
+                                <div class="custom-daily-schedule">
+                                    <div v-for="day in weekDays" :key="day.value" class="custom-daily-row">
+                                        <div class="day-checkbox">
+                                            <Checkbox
+                                                :modelValue="!!ruleForm.customDailySchedule[day.value]"
+                                                @update:modelValue="(val) => onDayToggle(day.value, val)"
+                                                :inputId="`day-${day.value}`"
+                                                :binary="true"
+                                            />
+                                            <label :for="`day-${day.value}`" class="day-label">{{ day.label }}</label>
+                                        </div>
+                                        <InputText
+                                            v-model="ruleForm.customDailySchedule[day.value + '_time']"
+                                            :disabled="!ruleForm.customDailySchedule[day.value]"
+                                            placeholder="HH:MM (e.g., 09:00)"
+                                            class="time-input"
+                                            :class="{ 'p-invalid': scheduleFormErrors[`day_${day.value}_time`] }"
+                                            @blur="validateTime(day.value)"
+                                        />
+                                    </div>
+                                </div>
+                                <small v-if="scheduleFormErrors.customDaily" class="p-error">{{
+                                    scheduleFormErrors.customDaily
+                                }}</small>
+                                <small class="p-text-secondary"
+                                    >Select days and set execution times in 24-hour format</small
+                                >
+                            </div>
+
+                            <div class="field" v-if="ruleForm.schedulePeriod && ruleForm.schedulePeriod !== 'none'">
+                                <label>Timezone</label>
+                                <Select
+                                    v-model="ruleForm.scheduleTimezone"
+                                    :options="timezoneOptions"
+                                    placeholder="Select timezone"
+                                    class="w-full"
+                                />
+                            </div>
+                        </div>
                     </div>
-                </div>
-            </div>
+                </TabPanel>
+                <TabPanel header="JSON Editor">
+                    <div class="json-editor-content">
+                        <div class="field">
+                            <label>Rule JSON</label>
+                            <div class="json-editor-scroll-container">
+                                <div class="json-editor-wrapper" :class="{ 'p-invalid': jsonError }">
+                                    <div class="json-line-numbers" ref="lineNumbersRef">
+                                        <div v-for="n in jsonLineCount" :key="n" class="json-line-number">{{ n }}</div>
+                                    </div>
+                                    <Textarea
+                                        v-model="ruleJsonText"
+                                        class="w-full json-textarea"
+                                        :rows="jsonLineCount"
+                                        placeholder='{"name": "Rule Name", "description": "...", "enabled": true, "schedule_cron": "...", "conditions": {...}, "actions": {...}}'
+                                        @input="validateJsonText"
+                                        ref="jsonTextareaRef"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                        <div class="json-actions">
+                            <div class="json-actions-info">
+                                <small v-if="jsonError" class="p-error">{{ jsonError }}</small>
+                                <small v-else class="p-text-secondary">
+                                    Edit the JSON directly or use the "Apply JSON" button to update the form. JSON
+                                    updates automatically when you change the form.
+                                </small>
+                            </div>
+                            <div class="json-actions-buttons">
+                                <Button
+                                    label="Apply JSON"
+                                    icon="pi pi-check"
+                                    @click="applyJsonToForm"
+                                    :disabled="!ruleJsonText || !!jsonError"
+                                    :loading="applyingJson"
+                                />
+                                <Button
+                                    label="Copy JSON"
+                                    icon="pi pi-copy"
+                                    severity="secondary"
+                                    outlined
+                                    @click="copyJsonToClipboard"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                </TabPanel>
+            </TabView>
 
             <!-- Add Scope Dialog -->
             <Dialog
@@ -1377,7 +1480,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from "vue";
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from "vue";
 import { useToast } from "primevue/usetoast";
 import { useConfirm } from "primevue/useconfirm";
 import DataTable from "primevue/datatable";
@@ -1395,6 +1498,8 @@ import Tag from "primevue/tag";
 import Toast from "primevue/toast";
 import ConfirmDialog from "primevue/confirmdialog";
 import Chips from "primevue/chips";
+import TabView from "primevue/tabview";
+import TabPanel from "primevue/tabpanel";
 import {
     getRules,
     createRule,
@@ -1424,10 +1529,11 @@ const selectedAccount = ref(null);
 const campaigns = ref([]);
 const adSets = ref([]);
 const ads = ref([]);
-const campaignsView = ref('campaigns'); // 'campaigns', 'adsets', 'ads'
+const campaignsView = ref("campaigns"); // 'campaigns', 'adsets', 'ads'
 const selectedCampaign = ref(null);
 const selectedAdSet = ref(null);
 const rules = ref([]);
+const allRules = ref([]); // Store all rules for counting across accounts
 const logs = ref([]);
 const loadingAccounts = ref(false);
 const loadingCampaigns = ref(false);
@@ -1490,6 +1596,28 @@ const scheduleFormErrors = ref({});
 const formErrors = ref({});
 const showAddScopeDialog = ref(false);
 const selectedScopeType = ref(null);
+
+// JSON Editor state
+const activeTabIndex = ref(0);
+const ruleJsonText = ref("");
+const jsonError = ref("");
+const applyingJson = ref(false);
+const isUpdatingJsonFromForm = ref(false);
+const jsonTextareaRef = ref(null);
+const lineNumbersRef = ref(null);
+
+// Computed property for line numbers
+const jsonLineCount = computed(() => {
+    if (!ruleJsonText.value) return 20;
+    const lines = ruleJsonText.value.split("\n").length;
+    // Add 1 to match textarea's actual line count (textarea shows one more line)
+    return Math.max(lines + 1, 20); // Minimum 20 lines for empty textarea
+});
+
+// Sync line numbers scroll with textarea scroll (not needed with outer scroll, but keeping for compatibility)
+function syncLineNumbersScroll(event) {
+    // No-op: With outer scroll, line numbers scroll naturally with the container
+}
 
 const periodOptions = [
     { label: "None", value: "none" },
@@ -1662,6 +1790,8 @@ let rulesPollingInterval = null;
 
 onMounted(async () => {
     await loadAdAccounts();
+    // Load all rules to count them per account
+    await loadAllRules();
     // Select default account if available
     try {
         const defaultAccount = await getDefaultAdAccount();
@@ -1676,6 +1806,8 @@ onMounted(async () => {
         if (selectedAccount.value) {
             loadRules(true); // silent = true to avoid loading indicator flicker
         }
+        // Also refresh all rules for counting
+        loadAllRules();
     }, 5000);
 });
 
@@ -1695,6 +1827,36 @@ watch(selectedAccount, async (newAccount) => {
     }
 });
 
+function getRulesCountForAccount(accountId) {
+    if (!accountId) return 0;
+    return allRules.value.filter((rule) => rule.ad_account_id === accountId).length;
+}
+
+// Watch for tab changes - update JSON when switching to JSON tab
+watch(activeTabIndex, (newIndex) => {
+    if (newIndex === 1) {
+        // Switching to JSON tab - update JSON from form
+        updateJSONFromForm();
+    }
+});
+
+// Watch for form changes - update JSON when on JSON tab
+watch(
+    ruleForm,
+    () => {
+        if (activeTabIndex.value === 1 && !isUpdatingJsonFromForm.value) {
+            // Only update if we're on JSON tab and not currently applying JSON
+            updateJSONFromForm();
+        }
+    },
+    { deep: true }
+);
+
+// Watch for JSON text changes to update line numbers
+watch(ruleJsonText, () => {
+    // Line numbers will update automatically via computed property
+});
+
 async function loadAdAccounts() {
     loadingAccounts.value = true;
     try {
@@ -1711,6 +1873,14 @@ async function loadAdAccounts() {
     }
 }
 
+async function loadAllRules() {
+    try {
+        allRules.value = await getRules(); // Load all rules without account filter
+    } catch (error) {
+        // Silently fail - don't show error for background refresh
+    }
+}
+
 async function loadRules(silent = false) {
     if (!selectedAccount.value) return;
 
@@ -1719,6 +1889,8 @@ async function loadRules(silent = false) {
     }
     try {
         rules.value = await getRules(selectedAccount.value.id);
+        // Also refresh all rules for counting
+        await loadAllRules();
     } catch (error) {
         // Only show error toast if not silent (manual refresh)
         if (!silent) {
@@ -1742,7 +1914,7 @@ function onAccountSelect(event) {
     campaigns.value = [];
     adSets.value = [];
     ads.value = [];
-    campaignsView.value = 'campaigns';
+    campaignsView.value = "campaigns";
     selectedCampaign.value = null;
     selectedAdSet.value = null;
     showCampaigns.value = false;
@@ -1792,34 +1964,34 @@ function getCampaignStatusSeverity(status) {
 }
 
 function getViewTitle() {
-    if (campaignsView.value === 'adsets') {
+    if (campaignsView.value === "adsets") {
         return {
-            prefix: 'Ad Sets for',
-            name: selectedCampaign.value?.name || 'Campaign'
+            prefix: "Ad Sets for",
+            name: selectedCampaign.value?.name || "Campaign",
         };
-    } else if (campaignsView.value === 'ads') {
+    } else if (campaignsView.value === "ads") {
         return {
-            prefix: 'Ads for',
-            name: selectedAdSet.value?.name || 'Ad Set'
+            prefix: "Ads for",
+            name: selectedAdSet.value?.name || "Ad Set",
         };
     }
     return {
-        prefix: 'Campaigns for',
-        name: selectedAccount.value?.name || ''
+        prefix: "Campaigns for",
+        name: selectedAccount.value?.name || "",
     };
 }
 
 function onCampaignClick(event) {
     const campaign = event.data;
     selectedCampaign.value = campaign;
-    campaignsView.value = 'adsets';
+    campaignsView.value = "adsets";
     loadAdSets(campaign.id);
 }
 
 function onAdSetClick(event) {
     const adSet = event.data;
     selectedAdSet.value = adSet;
-    campaignsView.value = 'ads';
+    campaignsView.value = "ads";
     loadAds(adSet.id);
 }
 
@@ -1864,14 +2036,14 @@ async function loadAds(adsetId) {
 }
 
 function goBack() {
-    if (campaignsView.value === 'ads') {
+    if (campaignsView.value === "ads") {
         // Go back to ad sets
-        campaignsView.value = 'adsets';
+        campaignsView.value = "adsets";
         ads.value = [];
         selectedAdSet.value = null;
-    } else if (campaignsView.value === 'adsets') {
+    } else if (campaignsView.value === "adsets") {
         // Go back to campaigns
-        campaignsView.value = 'campaigns';
+        campaignsView.value = "campaigns";
         adSets.value = [];
         selectedCampaign.value = null;
     }
@@ -1963,7 +2135,7 @@ async function testConnection() {
 
         // Refresh account data to get updated status
         await loadAdAccounts();
-        const updatedAccount = adAccounts.value.find(a => a.id === editingAccount.value.id);
+        const updatedAccount = adAccounts.value.find((a) => a.id === editingAccount.value.id);
         if (updatedAccount) {
             editingAccount.value = updatedAccount;
         }
@@ -2187,6 +2359,360 @@ function formatIds(ids) {
     return ids.join("\n");
 }
 
+// JSON Editor Functions
+function ruleFormToJSON() {
+    // Build scope filters object
+    const scopeObject = {};
+    ruleForm.value.scopeFilters.forEach((scope) => {
+        if (scope.type === "name_contains") {
+            if (Array.isArray(scope.value) && scope.value.length > 0) {
+                const filtered = scope.value.filter((v) => v && v.trim().length > 0);
+                if (filtered.length > 0) {
+                    scopeObject.name_contains = filtered;
+                }
+            } else if (typeof scope.value === "string" && scope.value.trim().length > 0) {
+                scopeObject.name_contains = [scope.value.trim()];
+            }
+        } else if (scope.type === "ids") {
+            if (Array.isArray(scope.value) && scope.value.length > 0) {
+                const filtered = scope.value.filter((v) => v && v.trim().length > 0);
+                if (filtered.length > 0) {
+                    scopeObject.ids = filtered;
+                }
+            } else if (typeof scope.value === "string" && scope.value.trim().length > 0) {
+                const ids = parseIds(scope.value);
+                if (ids.length > 0) {
+                    scopeObject.ids = ids;
+                }
+            }
+        } else if (scope.type === "campaign_name_contains") {
+            if (Array.isArray(scope.value) && scope.value.length > 0) {
+                const filtered = scope.value.filter((v) => v && v.trim().length > 0);
+                if (filtered.length > 0) {
+                    scopeObject.campaign_name_contains = filtered;
+                }
+            } else if (typeof scope.value === "string" && scope.value.trim().length > 0) {
+                scopeObject.campaign_name_contains = [scope.value.trim()];
+            }
+        } else if (scope.type === "campaign_ids") {
+            if (Array.isArray(scope.value) && scope.value.length > 0) {
+                const filtered = scope.value.filter((v) => v && v.trim().length > 0);
+                if (filtered.length > 0) {
+                    scopeObject.campaign_ids = filtered;
+                }
+            } else if (typeof scope.value === "string" && scope.value.trim().length > 0) {
+                const ids = parseIds(scope.value);
+                if (ids.length > 0) {
+                    scopeObject.campaign_ids = ids;
+                }
+            }
+        }
+    });
+
+    // Build conditions JSON
+    const conditionsJSON = {
+        rule_level: ruleForm.value.ruleLevel,
+        time_range: {
+            unit: ruleForm.value.timeRangeUnit,
+            amount: ruleForm.value.timeRangeAmount,
+            exclude_today: ruleForm.value.excludeToday,
+        },
+        conditions: ruleForm.value.conditions.map((c) => ({
+            field: c.field,
+            operator: c.operator,
+            value: c.value,
+        })),
+        ...scopeObject,
+    };
+
+    // Build actions JSON
+    const actionsJSON = {
+        actions: ruleForm.value.actions.map((a) => {
+            const action = { type: a.type };
+            if (a.type === "set_status") {
+                action.status = a.status;
+            } else if (a.type === "adjust_daily_budget") {
+                action.direction = a.direction;
+                action.percent = a.percent;
+                if (a.minCap !== null && a.minCap !== undefined) action.min_cap = a.minCap;
+                if (a.maxCap !== null && a.maxCap !== undefined) action.max_cap = a.maxCap;
+            }
+            // Include sendSlackNotification
+            if (a.type === "send_notification") {
+                action.send_slack_notification = true;
+            } else {
+                action.send_slack_notification = a.sendSlackNotification !== undefined ? a.sendSlackNotification : true;
+            }
+            return action;
+        }),
+    };
+
+    // Build cron expression
+    const cronExpression = buildCronExpression();
+
+    // Build exportable JSON (exclude system and account-specific fields)
+    const exportJSON = {
+        name: ruleForm.value.name,
+        description: ruleForm.value.description || null,
+        enabled: ruleForm.value.enabled,
+        schedule_cron: cronExpression || null,
+        conditions: conditionsJSON,
+        actions: actionsJSON,
+    };
+
+    return exportJSON;
+}
+
+function validateRuleJSON(json) {
+    const errors = [];
+
+    if (!json.name || typeof json.name !== "string" || json.name.trim() === "") {
+        errors.push("'name' is required and must be a non-empty string");
+    }
+
+    if (json.enabled !== undefined && typeof json.enabled !== "boolean") {
+        errors.push("'enabled' must be a boolean");
+    }
+
+    if (!json.conditions || typeof json.conditions !== "object") {
+        errors.push("'conditions' is required and must be an object");
+    } else {
+        if (!json.conditions.rule_level) {
+            errors.push("'conditions.rule_level' is required");
+        }
+        if (!json.conditions.time_range || typeof json.conditions.time_range !== "object") {
+            errors.push("'conditions.time_range' is required and must be an object");
+        } else {
+            if (!json.conditions.time_range.unit) {
+                errors.push("'conditions.time_range.unit' is required");
+            }
+            if (!json.conditions.time_range.amount || json.conditions.time_range.amount < 1) {
+                errors.push("'conditions.time_range.amount' is required and must be at least 1");
+            }
+        }
+        if (!Array.isArray(json.conditions.conditions)) {
+            errors.push("'conditions.conditions' must be an array");
+        }
+    }
+
+    if (!json.actions || typeof json.actions !== "object") {
+        errors.push("'actions' is required and must be an object");
+    } else {
+        if (!Array.isArray(json.actions.actions)) {
+            errors.push("'actions.actions' must be an array");
+        } else if (json.actions.actions.length === 0) {
+            errors.push("'actions.actions' must contain at least one action");
+        }
+    }
+
+    return errors;
+}
+
+function jsonToRuleForm(json) {
+    // Parse cron expression
+    const parsed = parseCronExpression(json.schedule_cron);
+
+    const conditions = json.conditions || {};
+    const actions = json.actions || {};
+
+    // Parse scope filters
+    const scopeFilters = [];
+
+    if (conditions.name_contains) {
+        if (Array.isArray(conditions.name_contains) && conditions.name_contains.length > 0) {
+            scopeFilters.push({ type: "name_contains", value: conditions.name_contains });
+        } else if (typeof conditions.name_contains === "string" && conditions.name_contains.trim().length > 0) {
+            scopeFilters.push({ type: "name_contains", value: [conditions.name_contains.trim()] });
+        }
+    }
+    if (conditions.ids) {
+        if (Array.isArray(conditions.ids) && conditions.ids.length > 0) {
+            scopeFilters.push({ type: "ids", value: conditions.ids });
+        } else if (typeof conditions.ids === "string" && conditions.ids.trim().length > 0) {
+            const ids = parseIds(conditions.ids);
+            if (ids.length > 0) {
+                scopeFilters.push({ type: "ids", value: ids });
+            }
+        }
+    }
+    if (conditions.campaign_name_contains) {
+        if (Array.isArray(conditions.campaign_name_contains) && conditions.campaign_name_contains.length > 0) {
+            scopeFilters.push({ type: "campaign_name_contains", value: conditions.campaign_name_contains });
+        } else if (
+            typeof conditions.campaign_name_contains === "string" &&
+            conditions.campaign_name_contains.trim().length > 0
+        ) {
+            scopeFilters.push({ type: "campaign_name_contains", value: [conditions.campaign_name_contains.trim()] });
+        }
+    }
+    if (conditions.campaign_ids) {
+        if (Array.isArray(conditions.campaign_ids) && conditions.campaign_ids.length > 0) {
+            scopeFilters.push({ type: "campaign_ids", value: conditions.campaign_ids });
+        } else if (typeof conditions.campaign_ids === "string" && conditions.campaign_ids.trim().length > 0) {
+            const ids = parseIds(conditions.campaign_ids);
+            if (ids.length > 0) {
+                scopeFilters.push({ type: "campaign_ids", value: ids });
+            }
+        }
+    }
+
+    // Parse conditions array
+    const conditionsArray = conditions.conditions || [];
+
+    // Parse actions array
+    const actionsArray = (actions.actions || []).map((action) => {
+        const actionObj = {
+            type: action.type,
+            status: action.status || null,
+            direction: action.direction || null,
+            percent: action.percent || null,
+            minCap: action.min_cap || null,
+            maxCap: action.max_cap || null,
+            sendSlackNotification:
+                action.type === "send_notification"
+                    ? true
+                    : action.send_slack_notification !== undefined
+                    ? action.send_slack_notification
+                    : true,
+        };
+        return actionObj;
+    });
+
+    // Parse time range
+    const timeRange = conditions.time_range || {};
+
+    // Update ruleForm
+    ruleForm.value = {
+        name: json.name || "",
+        description: json.description || "",
+        schedule_cron: json.schedule_cron || "",
+        enabled: json.enabled !== undefined ? json.enabled : true,
+        // Section 2
+        ruleLevel: conditions.rule_level || null,
+        scopeFilters: scopeFilters,
+        // Section 3
+        timeRangeUnit: timeRange.unit || null,
+        timeRangeAmount: timeRange.amount || null,
+        excludeToday: timeRange.exclude_today !== undefined ? timeRange.exclude_today : true,
+        // Section 4 (UI array)
+        conditions: conditionsArray,
+        // Section 5 (UI array)
+        actions: actionsArray,
+        // Section 6
+        schedulePeriod: parsed.period || "none",
+        scheduleFrequency: parsed.frequency || 1,
+        scheduleTime: parsed.time || null,
+        scheduleDayOfWeek: parsed.dayOfWeek !== null ? parsed.dayOfWeek : null,
+        scheduleDayOfMonth: parsed.dayOfMonth !== null && parsed.dayOfMonth !== undefined ? parsed.dayOfMonth : null,
+        scheduleTimezone: parsed.timezone || "UTC",
+        customDailySchedule: parsed.customDailySchedule || {},
+    };
+}
+
+function updateJSONFromForm() {
+    if (isUpdatingJsonFromForm.value) return; // Prevent infinite loop
+    try {
+        isUpdatingJsonFromForm.value = true;
+        const json = ruleFormToJSON();
+        ruleJsonText.value = JSON.stringify(json, null, 2);
+        jsonError.value = "";
+    } catch (error) {
+        jsonError.value = `Error generating JSON: ${error.message}`;
+    } finally {
+        isUpdatingJsonFromForm.value = false;
+    }
+}
+
+async function applyJsonToForm() {
+    applyingJson.value = true;
+    jsonError.value = "";
+
+    try {
+        // Parse JSON
+        let json;
+        try {
+            json = JSON.parse(ruleJsonText.value);
+        } catch (parseError) {
+            jsonError.value = `Invalid JSON syntax: ${parseError.message}`;
+            return;
+        }
+
+        // Validate JSON structure
+        const validationErrors = validateRuleJSON(json);
+        if (validationErrors.length > 0) {
+            jsonError.value = `Validation errors:\n${validationErrors.join("\n")}`;
+            return;
+        }
+
+        // Apply JSON to form
+        jsonToRuleForm(json);
+
+        // Clear form errors (they'll be re-validated on save)
+        formErrors.value = {};
+        scheduleFormErrors.value = {};
+
+        // Switch to Form tab
+        activeTabIndex.value = 0;
+
+        toast.add({
+            severity: "success",
+            summary: "Success",
+            detail: "JSON applied to form successfully",
+            life: 3000,
+        });
+    } catch (error) {
+        jsonError.value = `Error applying JSON: ${error.message}`;
+        toast.add({
+            severity: "error",
+            summary: "Error",
+            detail: `Failed to apply JSON: ${error.message}`,
+            life: 5000,
+        });
+    } finally {
+        applyingJson.value = false;
+    }
+}
+
+async function copyJsonToClipboard() {
+    try {
+        await navigator.clipboard.writeText(ruleJsonText.value);
+        toast.add({
+            severity: "success",
+            summary: "Success",
+            detail: "JSON copied to clipboard",
+            life: 3000,
+        });
+    } catch (error) {
+        toast.add({
+            severity: "error",
+            summary: "Error",
+            detail: "Failed to copy JSON to clipboard",
+            life: 5000,
+        });
+    }
+}
+
+function validateJsonText() {
+    // Clear previous error
+    jsonError.value = "";
+
+    // Only validate if there's content
+    if (!ruleJsonText.value || ruleJsonText.value.trim() === "") {
+        return;
+    }
+
+    try {
+        // Try to parse JSON
+        const json = JSON.parse(ruleJsonText.value);
+
+        // If parsing succeeds, validate structure (but don't show errors yet - only on Apply)
+        // We could do basic validation here, but for now just check syntax
+    } catch (parseError) {
+        // Show syntax error immediately
+        jsonError.value = `Invalid JSON syntax: ${parseError.message}`;
+    }
+}
+
 function editRule(rule) {
     editingRule.value = rule;
     // Try to parse existing cron expression
@@ -2238,7 +2764,6 @@ function editRule(rule) {
             }
         }
     }
-
 
     // Parse conditions array
     const conditionsArray = conditions.conditions || [];
@@ -2292,10 +2817,12 @@ function editRule(rule) {
         customDailySchedule: parsed.customDailySchedule || {},
     };
 
-
     scheduleFormErrors.value = {};
     formErrors.value = {};
     showCreateDialog.value = true;
+    activeTabIndex.value = 0; // Reset to Form tab
+    // Initialize JSON from form
+    updateJSONFromForm();
 }
 
 function closeDialog() {
@@ -2325,6 +2852,9 @@ function closeDialog() {
     formErrors.value = {};
     showAddScopeDialog.value = false;
     selectedScopeType.value = null;
+    activeTabIndex.value = 0; // Reset to Form tab
+    ruleJsonText.value = "";
+    jsonError.value = "";
 }
 
 function openCreateDialog() {
@@ -2354,7 +2884,10 @@ function openCreateDialog() {
     formErrors.value = {};
     showAddScopeDialog.value = false;
     selectedScopeType.value = null;
+    activeTabIndex.value = 0; // Reset to Form tab
     showCreateDialog.value = true;
+    // Initialize JSON from form
+    updateJSONFromForm();
 }
 
 function onSchedulePeriodChange() {
@@ -2878,7 +3411,6 @@ async function saveRule() {
     const scopeObject = {};
 
     ruleForm.value.scopeFilters.forEach((scope, idx) => {
-
         if (scope.type === "name_contains") {
             // Chips component stores array of strings
 
@@ -3008,6 +3540,7 @@ async function saveRule() {
         }
         closeDialog();
         await loadRules();
+        await loadAllRules(); // Refresh all rules for counting
     } catch (error) {
         toast.add({
             severity: "error",
@@ -3035,6 +3568,7 @@ function confirmDelete(rule) {
                     life: 3000,
                 });
                 await loadRules();
+                await loadAllRules(); // Refresh all rules for counting
             } catch (error) {
                 toast.add({
                     severity: "error",
@@ -3614,7 +4148,6 @@ function getStatusSeverity(status) {
     text-decoration: underline;
 }
 
-
 .campaigns-table {
     margin-top: 1rem;
 }
@@ -3997,6 +4530,10 @@ function getStatusSeverity(status) {
     word-wrap: break-word;
 }
 
+.rule-builder-dialog :deep(.p-dialog-footer) {
+    padding-top: 1rem;
+}
+
 .field-label {
     margin: 0;
     font-weight: 600;
@@ -4011,6 +4548,13 @@ function getStatusSeverity(status) {
 .rule-builder-dialog :deep(.p-textarea) {
     max-width: 100%;
     box-sizing: border-box;
+}
+
+/* Remove scroll from JSON editor textarea */
+.json-editor-scroll-container :deep(textarea) {
+    overflow: hidden;
+    overflow-y: hidden;
+    overflow-x: hidden;
 }
 
 .rule-builder-dialog :deep(.p-chips .p-chips-token) {
@@ -4152,8 +4696,8 @@ function getStatusSeverity(status) {
 :deep(.p-confirm-dialog),
 :deep(.p-confirm-dialog .p-dialog),
 :deep(.p-confirm-dialog-wrapper .p-dialog) {
-    max-width: 900px !important;
-    width: 90vw !important;
+    max-width: 900px;
+    width: 90vw;
 }
 
 /* Confirmation dialog content styling */
@@ -4268,7 +4812,7 @@ function getStatusSeverity(status) {
 .log-details-dialog :deep(.p-datatable-tbody tr td:nth-of-type(2)) {
     word-break: break-all;
     overflow-wrap: anywhere;
-    white-space: normal !important;
+    white-space: normal;
     max-width: 0;
 }
 
@@ -4299,16 +4843,103 @@ function getStatusSeverity(status) {
     cursor: pointer;
 }
 
+/* JSON Editor Styles */
+.json-editor-content {
+    padding: 1rem 0;
+}
+
+.json-editor-scroll-container {
+    border: 1px solid #ced4da;
+    border-radius: 6px;
+    background: #fff;
+}
+
+.json-editor-wrapper {
+    position: relative;
+    display: flex;
+    background: #fff;
+}
+
+.json-line-numbers {
+    background-color: #f8f9fa;
+    color: #6c757d;
+    padding-top: 0.65rem;
+    padding-bottom: 0.75rem;
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+    text-align: right;
+    user-select: none;
+    font-family: "Courier New", Courier, monospace;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    min-width: 3rem;
+    border-right: 1px solid #dee2e6;
+    flex-shrink: 0;
+}
+
+.json-line-number {
+    height: 1.49em;
+    padding-right: 0.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+}
+
+.json-textarea {
+    font-family: "Courier New", Courier, monospace;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    flex: 1;
+    border: none;
+    resize: none;
+}
+
+.json-textarea :deep(textarea) {
+    border: none;
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+    resize: none;
+    line-height: 1.5;
+}
+
+.json-editor-scroll-container.p-invalid {
+    border-color: #e24c4c;
+}
+
+.json-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-top: 1rem;
+}
+
+.json-actions-info {
+    flex: 1;
+}
+
+.json-actions-buttons {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: flex-end;
+}
+
 /* Global styles for PrimeVue ConfirmDialog (rendered at app level) */
 </style>
 
 <style>
+/* Global styles for rule builder dialog footer - not scoped since footer is rendered outside component */
+.rule-builder-dialog.p-dialog .p-dialog-footer {
+    padding-top: 1rem;
+}
+
 /* Global styles for ConfirmDialog - not scoped since it's rendered outside component */
 .p-confirm-dialog,
 .p-confirm-dialog .p-dialog,
 .p-confirm-dialog-wrapper .p-dialog {
-    max-width: 900px !important;
-    width: 90vw !important;
+    max-width: 900px;
+    width: 90vw;
 }
 
 .p-confirm-dialog .p-dialog-content,
