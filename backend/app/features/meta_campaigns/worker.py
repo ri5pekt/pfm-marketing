@@ -125,7 +125,8 @@ def check_campaign_rule(rule_id: int):
                     cron_expr = rule.schedule_cron
 
                 # If not custom_daily, calculate next run time for regular cron expression
-                if not is_custom_daily and rule.next_run_at is None:
+                # Always update next_run_at after execution to keep it accurate
+                if not is_custom_daily:
                     # Use extracted cron expression or original if not JSON
                     if cron_expr is None:
                         cron_expr = rule.schedule_cron
