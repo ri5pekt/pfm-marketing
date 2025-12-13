@@ -4,9 +4,86 @@ from datetime import datetime, timedelta
 import requests
 import logging
 import time
+import json
 from typing import Dict, List, Any, Tuple
 
 logger = logging.getLogger(__name__)
+
+# API call delays to prevent rate limiting
+READ_DELAY = 0.3  # Delay between read API calls (300ms)
+WRITE_DELAY = 0.7  # Delay between write API calls (700ms)
+INSIGHTS_DELAY = 1.0  # Delay between insights API calls (1s)
+
+
+def check_rate_limit_headers(response: requests.Response, api_type: str = "read"):
+    """
+    Check and log Meta API rate limiting headers to monitor usage.
+
+    Meta API provides these headers:
+    - X-App-Usage: App-level rate limiting
+    - X-Ad-Account-Usage: Ad account-level rate limiting
+    - X-Business-Use-Case-Usage: Business use case rate limiting
+
+    Each header contains JSON like: {"call_count": 100, "total_time": 20, "total_cputime": 20}
+
+    Args:
+        response: requests.Response object from Meta API
+        api_type: Type of API call ("read", "write", "insights")
+    """
+    rate_limit_headers = {
+        "X-App-Usage": response.headers.get("X-App-Usage"),
+        "X-Ad-Account-Usage": response.headers.get("X-Ad-Account-Usage"),
+        "X-Business-Use-Case-Usage": response.headers.get("X-Business-Use-Case-Usage")
+    }
+
+    # Only log if we have rate limit headers
+    if any(rate_limit_headers.values()):
+        usage_info = {}
+        for header_name, header_value in rate_limit_headers.items():
+            if header_value:
+                try:
+                    usage_data = json.loads(header_value)
+                    usage_info[header_name] = usage_data
+                except (json.JSONDecodeError, ValueError):
+                    usage_info[header_name] = header_value
+
+        # Check if we're getting close to limits (usually 80%+ is concerning)
+        warnings = []
+        for header_name, usage_data in usage_info.items():
+            if isinstance(usage_data, dict):
+                # Meta API typically uses call_count and total_time
+                call_count = usage_data.get("call_count", 0)
+                total_time = usage_data.get("total_time", 0)
+
+                # Check for acc_id_util_pct in X-Ad-Account-Usage (percentage usage, 0-100)
+                util_pct = usage_data.get("acc_id_util_pct", 0)
+
+                # Handle X-Business-Use-Case-Usage which has nested structure
+                if header_name == "X-Business-Use-Case-Usage" and isinstance(usage_data, dict):
+                    # This header has account IDs as keys, with arrays of usage data
+                    for account_id, usage_list in usage_data.items():
+                        if isinstance(usage_list, list) and len(usage_list) > 0:
+                            for usage_item in usage_list:
+                                if isinstance(usage_item, dict):
+                                    bc_call_count = usage_item.get("call_count", 0)
+                                    bc_total_time = usage_item.get("total_time", 0)
+                                    
+                                    # Warn if usage is high
+                                    if bc_call_count > 80 or bc_total_time > 80:
+                                        warnings.append(f"{header_name} ({account_id}): call_count={bc_call_count}, total_time={bc_total_time}")
+
+                # Warn if usage seems high
+                # Meta API typically has limits around 100 for call_count/total_time
+                # For acc_id_util_pct, 80%+ is concerning
+                if util_pct > 0 and util_pct >= 80:
+                    warnings.append(f"{header_name}: acc_id_util_pct={util_pct}%")
+                elif call_count > 80 or total_time > 80:
+                    warnings.append(f"{header_name}: call_count={call_count}, total_time={total_time}")
+
+        if warnings:
+            logger.warning(f"[RATE_LIMIT] ⚠️ HIGH USAGE WARNING ({api_type}): {'; '.join(warnings)}")
+
+    return rate_limit_headers
 
 
 def get_all_rules(db: Session):
@@ -85,8 +162,21 @@ def create_rule_log(db: Session, rule_id: int, status: str, message: str, detail
     return log
 
 
-def fetch_facebook_data(account_id: str, access_token: str, rule_level: str, limit: int = 100):
-    """Fetch campaigns, adsets, or ads from Facebook API"""
+def fetch_facebook_data(account_id: str, access_token: str, rule_level: str, limit: int = 2000):
+    """
+    Fetch all campaigns, adsets, or ads from Facebook API with pagination support.
+    Loads all items across multiple pages, not just the first page.
+    This is critical for rules to ensure they can filter/execute on all items, not just the first page.
+
+    Args:
+        account_id: Meta Ad Account ID (e.g., "act_123456789")
+        access_token: Meta Access Token
+        rule_level: Level to fetch - "campaign", "ad_set", or "ad"
+        limit: Number of items per page (default: 2000, max: 5000) - using 2000 to minimize API calls
+
+    Returns:
+        List of all items (campaigns, ad sets, or ads)
+    """
     base_url = "https://graph.facebook.com/v21.0"
 
     # Ensure account_id has 'act_' prefix
@@ -103,24 +193,48 @@ def fetch_facebook_data(account_id: str, access_token: str, rule_level: str, lim
         endpoint = f"{base_url}/{account_id}/campaigns"
         fields = "id,name,status,effective_status"
 
+    all_items = []
     url = f"{endpoint}?fields={fields}&limit={limit}&access_token={access_token}"
 
     try:
-        response = requests.get(url, timeout=30)
-        response.raise_for_status()
-        data = response.json()
-        items = data.get("data", [])
-        logger.info(f"Fetched {len(items)} {rule_level} items from Facebook API")
-        if items and len(items) > 0:
+        page_count = 0
+        while True:
+            page_count += 1
+            logger.info(f"Fetching {rule_level} page {page_count} for account {account_id}...")
+
+            response = requests.get(url, timeout=30)
+            response.raise_for_status()
+            check_rate_limit_headers(response, "read")
+            data = response.json()
+            page_items = data.get("data", [])
+            all_items.extend(page_items)
+
+            logger.debug(f"Fetched {len(page_items)} {rule_level} items on page {page_count} (total so far: {len(all_items)})")
+
+            paging = data.get("paging", {})
+            next_url = paging.get("next")
+
+            if not next_url:
+                break
+
+            url = next_url
+            time.sleep(READ_DELAY)
+            logger.debug(f"Waiting {READ_DELAY}s before fetching next {rule_level} page to avoid rate limiting")
+
+        logger.info(f"Fetched all {rule_level} items for account {account_id}: {len(all_items)} total across {page_count} page(s)")
+        if all_items and len(all_items) > 0:
             # Log sample item to verify fields are present
-            sample_item = items[0]
+            sample_item = all_items[0]
             logger.debug(f"Sample {rule_level} item fields: {list(sample_item.keys())}")
             if rule_level == "ad":
                 logger.debug(f"Sample ad - id: {sample_item.get('id')}, name: {sample_item.get('name')}, bid_amount: {sample_item.get('bid_amount')}")
-        return items
+            # Log sample names for debugging
+            sample_names = [item.get("name", "N/A") for item in all_items[:10]]
+            logger.info(f"Sample {rule_level} names (first 10): {sample_names}")
+        return all_items
     except requests.exceptions.RequestException as e:
         logger.error(f"Error fetching Facebook data: {str(e)}")
-        if hasattr(e.response, 'text'):
+        if hasattr(e, 'response') and e.response is not None and hasattr(e.response, 'text'):
             logger.error(f"Response: {e.response.text}")
         raise
 
@@ -151,8 +265,13 @@ def fetch_insights(account_id: str, access_token: str, rule_level: str, ids: Lis
 
     # Fetch insights in batches (Facebook API supports up to 50 IDs per request)
     batch_size = 50
+    total_batches = (len(ids) + batch_size - 1) // batch_size
+    insights_start_time = time.time()
+    logger.info(f"[TIMING] Fetching insights for {len(ids)} IDs in {total_batches} batch(es)...")
+
     for i in range(0, len(ids), batch_size):
         batch_ids = ids[i:i + batch_size]
+        batch_num = (i // batch_size) + 1
         ids_str = ",".join(batch_ids)
 
         # Build filtering JSON string
@@ -167,12 +286,16 @@ def fetch_insights(account_id: str, access_token: str, rule_level: str, ids: Lis
 
         # Add action_breakdowns parameter to get cost_per_action_type properly populated
         url = f"{endpoint}?level={level}&fields={fields}&time_range={time_range_str}&filtering={filtering}&action_breakdowns=action_type&access_token={access_token}"
-        logger.info(f"Fetching insights: level={level}, time_range={time_range_str}, batch_size={len(batch_ids)}")
+        logger.info(f"[TIMING] Fetching insights batch {batch_num}/{total_batches}: level={level}, time_range={time_range_str}, batch_size={len(batch_ids)}")
 
         try:
+            batch_start_time = time.time()
             response = requests.get(url, timeout=60)
             response.raise_for_status()
+            check_rate_limit_headers(response, "insights")
             data = response.json()
+            batch_elapsed = time.time() - batch_start_time
+            logger.info(f"[TIMING] Insights batch {batch_num}/{total_batches} completed in {batch_elapsed:.2f} seconds - {len(batch_ids)} IDs, got {len(data.get('data', []))} insights")
             logger.info(f"Insights API response for batch: {len(batch_ids)} IDs, got {len(data.get('data', []))} insights")
             if data.get("data") and len(data["data"]) > 0:
                 # Log first insight to see structure
@@ -195,14 +318,22 @@ def fetch_insights(account_id: str, access_token: str, rule_level: str, ids: Lis
                 if obj_id not in insights_data:
                     insights_data[obj_id] = {}
                     logger.debug(f"No insights data found for {obj_id}")
+
+            # Add delay between batches (except after the last batch)
+            if batch_num < total_batches:
+                time.sleep(INSIGHTS_DELAY)
+                logger.debug(f"Waiting {INSIGHTS_DELAY}s before fetching next insights batch to avoid rate limiting")
         except requests.exceptions.RequestException as e:
             logger.error(f"Error fetching insights batch: {str(e)}")
-            if hasattr(e.response, 'text'):
+            if hasattr(e, 'response') and e.response is not None and hasattr(e.response, 'text'):
                 logger.error(f"Response: {e.response.text}")
             # Mark all batch items as having no insights
             for obj_id in batch_ids:
                 if obj_id not in insights_data:
                     insights_data[obj_id] = {}
+
+    total_elapsed = time.time() - insights_start_time
+    logger.info(f"[TIMING] Total insights fetch completed in {total_elapsed:.2f} seconds for {len(ids)} IDs across {total_batches} batch(es)")
 
     return insights_data
 
@@ -280,43 +411,89 @@ def apply_scope_filters(data: List[Dict], scope_filters: Dict[str, Any], rule_le
         if isinstance(keywords, list) and keywords:
             if rule_level == "campaign":
                 # For campaign level, filter by campaign name directly
+                logger.info(f"Applying campaign_name_contains filter at campaign level: {len(filtered_data)} items before filter")
                 filtered_data = [
                     item for item in filtered_data
                     if any(keyword.lower() in item.get("name", "").lower() for keyword in keywords)
                 ]
+                logger.info(f"After campaign_name_contains filter: {len(filtered_data)} items remaining")
+                if filtered_data:
+                    sample_names = [item.get("name", "N/A") for item in filtered_data[:5]]
+                    logger.info(f"Sample matching campaign names: {sample_names}")
             else:
                 # For ad/adset level, fetch campaigns by name, then filter by campaign_id
                 if account_id and access_token:
                     try:
-                        # Fetch campaigns and filter by name
+                        filter_start_time = time.time()
+                        logger.info(f"Fetching campaigns for campaign_name_contains filter (keywords: {keywords})...")
+                        # Fetch campaigns and filter by name with pagination
                         base_url = "https://graph.facebook.com/v21.0"
                         if not account_id.startswith("act_"):
-                            account_id = f"act_{account_id}"
+                            account_id_formatted = f"act_{account_id}"
+                        else:
+                            account_id_formatted = account_id
 
-                        url = f"{base_url}/{account_id}/campaigns"
+                        all_campaigns = []
+                        url = f"{base_url}/{account_id_formatted}/campaigns"
                         params = {
                             "fields": "id,name",
-                            "limit": 500,
+                            "limit": 2000,  # Use 2000 to minimize API calls
                             "access_token": access_token
                         }
-                        response = requests.get(url, params=params, timeout=30)
-                        if response.status_code == 200:
-                            campaigns_data = response.json().get("data", [])
-                            # Filter campaigns by name keywords
-                            matching_campaign_ids = [
-                                str(campaign.get("id"))
-                                for campaign in campaigns_data
-                                if any(keyword.lower() in campaign.get("name", "").lower() for keyword in keywords)
-                            ]
-                            # Filter ads/adsets by matching campaign IDs
-                            if matching_campaign_ids:
-                                filtered_data = [
-                                    item for item in filtered_data
-                                    if str(item.get("campaign_id", "")) in matching_campaign_ids
-                                ]
+                        using_next_url = False
+                        page_count = 0
+                        while True:
+                            page_count += 1
+                            if using_next_url:
+                                response = requests.get(url, timeout=30)
                             else:
-                                # No campaigns match, so no ads/adsets match
-                                filtered_data = []
+                                response = requests.get(url, params=params, timeout=30)
+                            response.raise_for_status()
+                            check_rate_limit_headers(response, "read")
+
+                            data = response.json()
+                            page_campaigns = data.get("data", [])
+                            all_campaigns.extend(page_campaigns)
+
+                            paging = data.get("paging", {})
+                            next_url = paging.get("next")
+
+                            if not next_url:
+                                break
+
+                            url = next_url
+                            using_next_url = True
+                            time.sleep(READ_DELAY)
+
+                        filter_elapsed = time.time() - filter_start_time
+                        logger.info(f"[TIMING] Campaign fetch for campaign_name_contains filter took {filter_elapsed:.2f} seconds")
+                        logger.info(f"Fetched all campaigns: {len(all_campaigns)} total across {page_count} page(s)")
+
+                        # Filter campaigns by name keywords
+                        matching_campaign_ids = [
+                            str(campaign.get("id"))
+                            for campaign in all_campaigns
+                            if any(keyword.lower() in campaign.get("name", "").lower() for keyword in keywords)
+                        ]
+                        logger.info(f"Found {len(matching_campaign_ids)} campaigns matching campaign_name_contains (keywords: {keywords})")
+                        if matching_campaign_ids:
+                            logger.debug(f"Matching campaign IDs: {matching_campaign_ids[:10]}")  # Log first 10
+
+                        # Filter ads/adsets by matching campaign IDs
+                        logger.info(f"Filtering {rule_level} items by campaign_id: {len(filtered_data)} items before filter")
+                        if matching_campaign_ids:
+                            filtered_data = [
+                                item for item in filtered_data
+                                if str(item.get("campaign_id", "")) in matching_campaign_ids
+                            ]
+                            logger.info(f"After campaign_name_contains filter: {len(filtered_data)} items remaining")
+                            if filtered_data:
+                                sample_names = [item.get("name", "N/A") for item in filtered_data[:5]]
+                                logger.info(f"Sample matching {rule_level} names: {sample_names}")
+                        else:
+                            # No campaigns match, so no ads/adsets match
+                            logger.info("No campaigns match, so no ads/adsets match")
+                            filtered_data = []
                     except Exception as e:
                         logger.warning(f"Error fetching campaigns for campaign_name_contains filter: {str(e)}")
                         # If we can't fetch campaigns, we can't filter, so keep all data
@@ -689,6 +866,7 @@ def execute_action(account_id: str, access_token: str, rule_level: str, items: L
                 }
                 response = requests.post(url, params=params, timeout=30)
                 response.raise_for_status()
+                check_rate_limit_headers(response, "write")
                 result["success"] = True
                 result["message"] = f"Status set to {status}"
                 logger.info(f"Successfully set status to {status} for {rule_level} {item_id}")
@@ -701,6 +879,7 @@ def execute_action(account_id: str, access_token: str, rule_level: str, items: L
                     params = {"fields": "daily_budget", "access_token": access_token}
                     get_response = requests.get(url, params=params, timeout=30)
                     get_response.raise_for_status()
+                    check_rate_limit_headers(get_response, "read")
                     adset_data = get_response.json()
                     current_budget = float(adset_data.get("daily_budget", 0)) / 100  # Convert cents to dollars
 
@@ -728,6 +907,7 @@ def execute_action(account_id: str, access_token: str, rule_level: str, items: L
                             }
                             response = requests.post(url, params=params, timeout=30)
                             response.raise_for_status()
+                            check_rate_limit_headers(response, "write")
                             result["success"] = True
                             result["message"] = f"Budget adjusted from ${current_budget:.2f} to ${new_budget:.2f}"
                             result["old_budget"] = current_budget
@@ -751,6 +931,7 @@ def execute_action(account_id: str, access_token: str, rule_level: str, items: L
                             }
                             response = requests.post(url, params=params, timeout=30)
                             response.raise_for_status()
+                            check_rate_limit_headers(response, "write")
                             result["success"] = True
                             result["message"] = f"Budget adjusted from ${current_budget:.2f} to ${new_budget:.2f}"
                             result["old_budget"] = current_budget
@@ -808,8 +989,8 @@ def execute_action(account_id: str, access_token: str, rule_level: str, items: L
 
         # Add delay between API calls to avoid rate limiting (except after the last item)
         if index < len(items) - 1:
-            time.sleep(1.0)  # 1 second delay between calls to prevent rate limiting
-            logger.debug(f"Waiting 1 second before processing next item to avoid rate limiting")
+            time.sleep(WRITE_DELAY)
+            logger.debug(f"Waiting {WRITE_DELAY}s before processing next item to avoid rate limiting")
 
     return results
 
@@ -865,17 +1046,29 @@ def test_rule(db: Session, rule_id: int):
         "evaluations": []
     }
 
+    total_start_time = time.time()
+    logger.info(f"[TIMING] === Starting rule execution: rule_id={rule_id} (rule: {rule.name}) ===")
+
     try:
         # Step 1: Fetch data from Facebook API
-        logger.info(f"Fetching {rule_level} data for rule {rule_id}")
+        step_start_time = time.time()
+        logger.info(f"[TIMING] Step 1 - Fetching {rule_level} data for rule {rule_id} (rule: {rule.name})")
         all_data = fetch_facebook_data(account_id, access_token, rule_level)
+        step_elapsed = time.time() - step_start_time
+        logger.info(f"[TIMING] Step 1 completed in {step_elapsed:.2f} seconds - Fetched {len(all_data)} total {rule_level} items from Facebook API")
         log_details["data_fetch"] = {
             "total_items": len(all_data),
             "items": all_data[:10]  # Log first 10 for reference
         }
 
         # Step 2: Apply scope filters
+        step_start_time = time.time()
+        logger.info(f"[TIMING] Step 2 - Applying scope filters for rule {rule_id}...")
+        logger.info(f"Applying scope filters for {rule_level} level. Starting with {len(all_data)} items.")
+        logger.info(f"Scope filters: {scope_filters}")
         filtered_data = apply_scope_filters(all_data, scope_filters, rule_level, account_id, access_token)
+        step_elapsed = time.time() - step_start_time
+        logger.info(f"[TIMING] Step 2 completed in {step_elapsed:.2f} seconds - After scope filtering: {len(filtered_data)} items remaining (from {len(all_data)} total)")
         log_details["filtered_data"] = [
             {
                 "id": item.get("id"),
@@ -887,12 +1080,15 @@ def test_rule(db: Session, rule_id: int):
         ]
 
         # Step 3: Fetch insights for filtered items
+        step_start_time = time.time()
+        logger.info(f"[TIMING] Step 3 - Fetching insights for {len(filtered_data)} filtered {rule_level} items")
         filtered_ids = [item.get("id") for item in filtered_data]
         logger.info(f"Fetching insights for {len(filtered_ids)} filtered {rule_level} items")
         insights_data = fetch_insights(account_id, access_token, rule_level, filtered_ids, time_range)
+        step_elapsed = time.time() - step_start_time
         # Log insights summary
         insights_with_data = sum(1 for v in insights_data.values() if v and len(v) > 0)
-        logger.info(f"Insights fetched: {insights_with_data} items have data out of {len(insights_data)} total")
+        logger.info(f"[TIMING] Step 3 completed in {step_elapsed:.2f} seconds - Insights fetched: {insights_with_data} items have data out of {len(insights_data)} total")
         log_details["insights_summary"] = {
             "total_items": len(insights_data),
             "items_with_data": insights_with_data,
@@ -900,6 +1096,8 @@ def test_rule(db: Session, rule_id: int):
         }
 
         # Step 4: Pre-fetch campaign statuses if needed (for ad/ad_set levels with campaign_status conditions)
+        step_start_time = time.time()
+        logger.info(f"[TIMING] Step 4 - Pre-fetching campaign statuses...")
         campaign_status_cache = {}
         has_campaign_status_condition = any(
             cond.get("field") == "campaign_status" for cond in rule_conditions
@@ -950,8 +1148,12 @@ def test_rule(db: Session, rule_id: int):
                 except Exception as e:
                     logger.warning(f"Error fetching campaign statuses: {str(e)}")
                     # Continue without campaign status cache - conditions will fail gracefully
+        step_elapsed = time.time() - step_start_time
+        logger.info(f"[TIMING] Step 4 completed in {step_elapsed:.2f} seconds - Campaign statuses cached: {len(campaign_status_cache)} campaigns")
 
         # Step 5: Evaluate conditions for each item
+        step_start_time = time.time()
+        logger.info(f"[TIMING] Step 5 - Evaluating conditions for {len(filtered_data)} items...")
         items_meeting_conditions = []
 
         for item in filtered_data:
@@ -978,6 +1180,8 @@ def test_rule(db: Session, rule_id: int):
 
             if all_passed:
                 items_meeting_conditions.append(item)
+        step_elapsed = time.time() - step_start_time
+        logger.info(f"[TIMING] Step 5 completed in {step_elapsed:.2f} seconds - {len(items_meeting_conditions)} item(s) met all conditions out of {len(filtered_data)} evaluated")
 
         # Step 6: Determine decision
         decision = "proceed" if len(items_meeting_conditions) > 0 else "skip"
@@ -989,6 +1193,8 @@ def test_rule(db: Session, rule_id: int):
         ]
 
         # Step 7: Execute actions if conditions are met
+        step_start_time = time.time()
+        logger.info(f"[TIMING] Step 7 - Executing actions on {len(items_meeting_conditions)} items...")
         actions_executed = []
         if decision == "proceed" and len(items_meeting_conditions) > 0:
             rule_actions = rule.actions.get("actions", [])
@@ -1000,16 +1206,21 @@ def test_rule(db: Session, rule_id: int):
                     rule_name=rule.name
                 )
                 actions_executed.extend(action_results)
+        step_elapsed = time.time() - step_start_time
+        logger.info(f"[TIMING] Step 7 completed in {step_elapsed:.2f} seconds - Executed {len(actions_executed)} action(s)")
 
         log_details["actions_executed"] = actions_executed
 
-        # Step 7: Log results
+        # Step 8: Log results
         if actions_executed:
             success_count = sum(1 for a in actions_executed if a.get("success", False))
             message = f"Executed actions on {success_count}/{len(actions_executed)} item(s). {len(items_meeting_conditions)} item(s) met all conditions."
         else:
             message = f"Test completed: {len(items_meeting_conditions)} item(s) meet all conditions"
         status = "success" if decision == "proceed" else "skipped"
+
+        total_elapsed = time.time() - total_start_time
+        logger.info(f"[TIMING] === Rule execution completed in {total_elapsed:.2f} seconds total ===")
 
         create_rule_log(db, rule_id, status, message, log_details)
 
