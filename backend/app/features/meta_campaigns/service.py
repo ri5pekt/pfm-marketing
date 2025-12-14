@@ -6,6 +6,7 @@ import logging
 import time
 import json
 from typing import Dict, List, Any, Tuple
+from urllib.parse import quote, urlparse, parse_qs, urlencode, urlunparse
 
 logger = logging.getLogger(__name__)
 
@@ -14,8 +15,118 @@ READ_DELAY = 0.3  # Delay between read API calls (300ms)
 WRITE_DELAY = 0.7  # Delay between write API calls (700ms)
 INSIGHTS_DELAY = 1.0  # Delay between insights API calls (1s)
 
+# Rate limit tracking - store last N readings per account
+_rate_limit_history = {}  # {account_id: [{"timestamp": time, "usage": {...}}, ...]}
+_MAX_HISTORY = 10  # Keep last 10 readings per account
 
-def check_rate_limit_headers(response: requests.Response, api_type: str = "read"):
+
+def track_rate_limit_usage(account_id: str, rate_limit_headers: dict, api_type: str = "read"):
+    """
+    Track rate limit usage over time to understand call frequency and avoid blocking.
+
+    Args:
+        account_id: Ad account ID for tracking
+        rate_limit_headers: Dict of rate limit headers
+        api_type: Type of API call
+    """
+    global _rate_limit_history
+
+    if not account_id:
+        return
+
+    current_time = time.time()
+    current_usage = {}
+
+    # Extract key metrics from headers
+    for header_name, header_value in rate_limit_headers.items():
+        if header_value:
+            try:
+                usage_data = json.loads(header_value)
+                if isinstance(usage_data, dict):
+                    # Extract key metrics
+                    metrics = {
+                        "call_count": usage_data.get("call_count", 0),
+                        "total_time": usage_data.get("total_time", 0),
+                        "total_cputime": usage_data.get("total_cputime", 0),
+                        "acc_id_util_pct": usage_data.get("acc_id_util_pct", None),
+                        "reset_time_duration": usage_data.get("reset_time_duration", None),
+                        "ads_api_access_tier": usage_data.get("ads_api_access_tier", None)
+                    }
+                    current_usage[header_name] = metrics
+            except (json.JSONDecodeError, ValueError):
+                pass
+
+    if not current_usage:
+        return
+
+    # Initialize history for this account if needed
+    if account_id not in _rate_limit_history:
+        _rate_limit_history[account_id] = []
+
+    # Add current reading
+    _rate_limit_history[account_id].append({
+        "timestamp": current_time,
+        "usage": current_usage
+    })
+
+    # Keep only last N readings
+    if len(_rate_limit_history[account_id]) > _MAX_HISTORY:
+        _rate_limit_history[account_id] = _rate_limit_history[account_id][-_MAX_HISTORY:]
+
+    # Analyze trends if we have at least 2 readings
+    history = _rate_limit_history[account_id]
+    if len(history) >= 2:
+        prev_reading = history[-2]
+        curr_reading = history[-1]
+        time_diff = curr_reading["timestamp"] - prev_reading["timestamp"]
+
+        if time_diff > 0:
+            # Analyze each header
+            for header_name in current_usage:
+                if header_name in prev_reading["usage"]:
+                    prev_metrics = prev_reading["usage"][header_name]
+                    curr_metrics = curr_reading["usage"][header_name]
+
+                    # Track call_count increase rate
+                    prev_calls = prev_metrics.get("call_count", 0)
+                    curr_calls = curr_metrics.get("call_count", 0)
+                    if curr_calls > prev_calls:
+                        calls_per_second = (curr_calls - prev_calls) / time_diff
+                        logger.info(f"[RATE_LIMIT_TRACK] {header_name} - Call count: {prev_calls} → {curr_calls} (+{curr_calls - prev_calls}) in {time_diff:.2f}s = {calls_per_second:.2f} calls/sec")
+
+                    # Track total_time increase rate
+                    prev_time = prev_metrics.get("total_time", 0)
+                    curr_time = curr_metrics.get("total_time", 0)
+                    if curr_time > prev_time:
+                        time_per_second = (curr_time - prev_time) / time_diff
+                        logger.info(f"[RATE_LIMIT_TRACK] {header_name} - Total time: {prev_time} → {curr_time} (+{curr_time - prev_time}) in {time_diff:.2f}s = {time_per_second:.2f} time units/sec")
+
+                    # Track acc_id_util_pct if available
+                    prev_pct = prev_metrics.get("acc_id_util_pct")
+                    curr_pct = curr_metrics.get("acc_id_util_pct")
+                    if prev_pct is not None and curr_pct is not None:
+                        pct_change = curr_pct - prev_pct
+                        pct_per_second = pct_change / time_diff if time_diff > 0 else 0
+                        logger.info(f"[RATE_LIMIT_TRACK] {header_name} - Usage %: {prev_pct}% → {curr_pct}% ({pct_change:+.1f}%) in {time_diff:.2f}s = {pct_per_second:.2f}%/sec")
+
+                        # Calculate time until 100% if trend continues
+                        if pct_per_second > 0 and curr_pct < 100:
+                            time_to_limit = (100 - curr_pct) / pct_per_second
+                            logger.warning(f"[RATE_LIMIT_TRACK] ⚠️ {header_name} - At current rate ({pct_per_second:.2f}%/sec), will hit 100% in {time_to_limit:.1f} seconds ({time_to_limit/60:.1f} minutes)")
+
+                        # Warn if approaching limits
+                        if curr_pct >= 90:
+                            logger.error(f"[RATE_LIMIT_TRACK] 🚨 {header_name} - CRITICAL: Usage at {curr_pct}% - Very close to limit!")
+                        elif curr_pct >= 80:
+                            logger.warning(f"[RATE_LIMIT_TRACK] ⚠️ {header_name} - WARNING: Usage at {curr_pct}% - Approaching limit")
+
+                    # Check reset_time_duration if available
+                    reset_duration = curr_metrics.get("reset_time_duration")
+                    if reset_duration and reset_duration > 0:
+                        logger.info(f"[RATE_LIMIT_TRACK] {header_name} - Reset time duration: {reset_duration} seconds ({reset_duration/60:.1f} minutes)")
+
+
+def check_rate_limit_headers(response: requests.Response, api_type: str = "read", account_id: str = None):
     """
     Check and log Meta API rate limiting headers to monitor usage.
 
@@ -29,12 +140,17 @@ def check_rate_limit_headers(response: requests.Response, api_type: str = "read"
     Args:
         response: requests.Response object from Meta API
         api_type: Type of API call ("read", "write", "insights")
+        account_id: Optional account ID for tracking trends
     """
     rate_limit_headers = {
         "X-App-Usage": response.headers.get("X-App-Usage"),
         "X-Ad-Account-Usage": response.headers.get("X-Ad-Account-Usage"),
         "X-Business-Use-Case-Usage": response.headers.get("X-Business-Use-Case-Usage")
     }
+
+    # Track usage trends if account_id provided
+    if account_id:
+        track_rate_limit_usage(account_id, rate_limit_headers, api_type)
 
     # Only log if we have rate limit headers
     if any(rate_limit_headers.values()):
@@ -61,16 +177,16 @@ def check_rate_limit_headers(response: requests.Response, api_type: str = "read"
                 # Handle X-Business-Use-Case-Usage which has nested structure
                 if header_name == "X-Business-Use-Case-Usage" and isinstance(usage_data, dict):
                     # This header has account IDs as keys, with arrays of usage data
-                    for account_id, usage_list in usage_data.items():
+                    for account_id_key, usage_list in usage_data.items():
                         if isinstance(usage_list, list) and len(usage_list) > 0:
                             for usage_item in usage_list:
                                 if isinstance(usage_item, dict):
                                     bc_call_count = usage_item.get("call_count", 0)
                                     bc_total_time = usage_item.get("total_time", 0)
-                                    
+
                                     # Warn if usage is high
                                     if bc_call_count > 80 or bc_total_time > 80:
-                                        warnings.append(f"{header_name} ({account_id}): call_count={bc_call_count}, total_time={bc_total_time}")
+                                        warnings.append(f"{header_name} ({account_id_key}): call_count={bc_call_count}, total_time={bc_total_time}")
 
                 # Warn if usage seems high
                 # Meta API typically has limits around 100 for call_count/total_time
@@ -162,7 +278,7 @@ def create_rule_log(db: Session, rule_id: int, status: str, message: str, detail
     return log
 
 
-def fetch_facebook_data(account_id: str, access_token: str, rule_level: str, limit: int = 2000):
+def fetch_facebook_data(account_id: str, access_token: str, rule_level: str, limit: int = None, scope_filters: Dict[str, Any] = None):
     """
     Fetch all campaigns, adsets, or ads from Facebook API with pagination support.
     Loads all items across multiple pages, not just the first page.
@@ -172,7 +288,8 @@ def fetch_facebook_data(account_id: str, access_token: str, rule_level: str, lim
         account_id: Meta Ad Account ID (e.g., "act_123456789")
         access_token: Meta Access Token
         rule_level: Level to fetch - "campaign", "ad_set", or "ad"
-        limit: Number of items per page (default: 2000, max: 5000) - using 2000 to minimize API calls
+        limit: Number of items per page (None = use defaults: 3000 for ads, 2000 for others)
+        scope_filters: Optional scope filters to apply at API level (e.g., campaign_ids)
 
     Returns:
         List of all items (campaigns, ad sets, or ads)
@@ -183,54 +300,214 @@ def fetch_facebook_data(account_id: str, access_token: str, rule_level: str, lim
     if not account_id.startswith("act_"):
         account_id = f"act_{account_id}"
 
+    # Use higher limit for ads (3000) to reduce number of API calls
+    if limit is None:
+        if rule_level == "ad":
+            limit = 3000
+        else:
+            limit = 2000
+
     if rule_level == "ad":
         endpoint = f"{base_url}/{account_id}/ads"
-        fields = "id,name,account_id,adset_id,campaign_id,status,configured_status,effective_status,bid_amount,conversion_domain,created_time,last_updated_by_app_id,issues_info,preview_shareable_link,recommendations,tracking_specs,creative{id,name,object_story_spec,thumbnail_url,asset_feed_spec}"
+        # Reduced fields to avoid "Please reduce the amount of data" error from Facebook API
+        # Only include fields actually used in rule evaluation and filtering
+        fields = "id,name,adset_id,campaign_id,status,effective_status"
+        # Filter out archived and deleted ads, but keep paused ads (needed for reactivation rules)
+        # Using effective_status to filter out ARCHIVED and DELETED, but keep ACTIVE, PAUSED, etc.
+        filtering = '[{"field":"effective_status","operator":"NOT_IN","value":["ARCHIVED","DELETED"]}]'
     elif rule_level == "ad_set":
         endpoint = f"{base_url}/{account_id}/adsets"
         fields = "id,name,campaign_id,status,effective_status,daily_budget,lifetime_budget"
+        # Filter out archived and deleted ad sets, but keep paused
+        filtering = '[{"field":"effective_status","operator":"NOT_IN","value":["ARCHIVED","DELETED"]}]'
     else:  # campaign
         endpoint = f"{base_url}/{account_id}/campaigns"
         fields = "id,name,status,effective_status"
+        # Filter out archived and deleted campaigns, but keep paused
+        filtering = '[{"field":"effective_status","operator":"NOT_IN","value":["ARCHIVED","DELETED"]}]'
+
+    # Add campaign_ids filter to API request if provided in scope_filters
+    if scope_filters and "campaign_ids" in scope_filters and scope_filters["campaign_ids"]:
+        campaign_ids = scope_filters["campaign_ids"]
+        # Convert string to list if needed
+        if isinstance(campaign_ids, str):
+            campaign_ids = [id_val.strip() for id_val in campaign_ids.replace("\n", ",").split(",") if id_val.strip()]
+
+        if isinstance(campaign_ids, list) and campaign_ids:
+            # Parse existing filtering JSON
+            try:
+                filter_list = json.loads(filtering)
+            except json.JSONDecodeError:
+                filter_list = []
+
+            # Determine the field name based on rule level
+            if rule_level == "campaign":
+                # For campaigns, filter by id field
+                filter_field = "id"
+            else:
+                # For ads and ad sets, filter by campaign.id field
+                filter_field = "campaign.id"
+
+            # Add campaign_ids filter
+            campaign_filter = {
+                "field": filter_field,
+                "operator": "IN",
+                "value": campaign_ids
+            }
+            filter_list.append(campaign_filter)
+
+            # Convert back to JSON string
+            filtering = json.dumps(filter_list)
+            logger.info(f"[FETCH] Added campaign_ids filter to API request: {len(campaign_ids)} campaign(s) - {campaign_ids[:5]}{'...' if len(campaign_ids) > 5 else ''}")
 
     all_items = []
-    url = f"{endpoint}?fields={fields}&limit={limit}&access_token={access_token}"
+    # Add filtering parameter to exclude archived/deleted items (URL-encode the JSON filter)
+    filtering_encoded = quote(filtering)
+    url = f"{endpoint}?fields={fields}&limit={limit}&filtering={filtering_encoded}&access_token={access_token}"
 
     try:
         page_count = 0
+        start_time = time.time()
+        logger.info(f"[FETCH] Starting to fetch {rule_level} data for account {account_id} with limit={limit} (excluding ARCHIVED and DELETED)")
+
         while True:
             page_count += 1
-            logger.info(f"Fetching {rule_level} page {page_count} for account {account_id}...")
+            page_start_time = time.time()
+            logger.info(f"[FETCH] Fetching {rule_level} page {page_count} for account {account_id}... (URL: {endpoint})")
 
             response = requests.get(url, timeout=30)
+            request_time = time.time() - page_start_time
+
+            # Check for rate limiting errors before raising
+            if response.status_code == 400:
+                try:
+                    error_data = response.json()
+                    error_info = error_data.get("error", {})
+                    error_code = error_info.get("code")
+                    error_subcode = error_info.get("error_subcode")
+                    error_message = error_info.get("message", "")
+                    error_type = error_info.get("type", "")
+
+                    logger.error(f"[FETCH] Facebook API error - Code: {error_code}, Subcode: {error_subcode}, Type: {error_type}, Message: {error_message}")
+
+                    # Check if it's a rate limit error (code 17 or subcode 2446079)
+                    if error_code == 17 or error_subcode == 2446079 or "too many" in error_message.lower() or "rate limit" in error_message.lower():
+                        logger.error(f"[FETCH] Rate limit detected! Total pages fetched before error: {page_count - 1}, Total items: {len(all_items)}")
+                        raise Exception(f"Facebook API rate limit reached: {error_message}. Please wait a few minutes and try again.")
+                except (ValueError, KeyError):
+                    pass  # If we can't parse the error, let raise_for_status handle it
+
             response.raise_for_status()
-            check_rate_limit_headers(response, "read")
+
+            # Check and log rate limit headers in detail
+            rate_limit_headers = {
+                "X-App-Usage": response.headers.get("X-App-Usage"),
+                "X-Ad-Account-Usage": response.headers.get("X-Ad-Account-Usage"),
+                "X-Business-Use-Case-Usage": response.headers.get("X-Business-Use-Case-Usage")
+            }
+
+            # Log rate limit headers if present
+            if any(rate_limit_headers.values()):
+                logger.info(f"[FETCH] Rate limit headers received for page {page_count}:")
+                for header_name, header_value in rate_limit_headers.items():
+                    if header_value:
+                        try:
+                            usage_data = json.loads(header_value)
+                            logger.info(f"[FETCH]   {header_name}: {json.dumps(usage_data, indent=2)}")
+
+                            # Extract and log key metrics
+                            if isinstance(usage_data, dict):
+                                call_count = usage_data.get("call_count", 0)
+                                total_time = usage_data.get("total_time", 0)
+                                total_cputime = usage_data.get("total_cputime", 0)
+                                acc_id_util_pct = usage_data.get("acc_id_util_pct", None)
+
+                                if acc_id_util_pct is not None:
+                                    logger.info(f"[FETCH]     → Ad Account Usage: {acc_id_util_pct}%")
+                                if call_count > 0:
+                                    logger.info(f"[FETCH]     → Call Count: {call_count}")
+                                if total_time > 0:
+                                    logger.info(f"[FETCH]     → Total Time: {total_time}")
+                                if total_cputime > 0:
+                                    logger.info(f"[FETCH]     → Total CPU Time: {total_cputime}")
+
+                                # Special handling for X-Business-Use-Case-Usage
+                                if header_name == "X-Business-Use-Case-Usage":
+                                    for account_id, usage_list in usage_data.items():
+                                        if isinstance(usage_list, list):
+                                            logger.info(f"[FETCH]     → Business Use Case Usage for {account_id}:")
+                                            for idx, usage_item in enumerate(usage_list):
+                                                if isinstance(usage_item, dict):
+                                                    logger.info(f"[FETCH]       [{idx}] {json.dumps(usage_item, indent=2)}")
+                        except (json.JSONDecodeError, ValueError):
+                            logger.info(f"[FETCH]   {header_name}: {header_value} (raw)")
+                    else:
+                        logger.debug(f"[FETCH]   {header_name}: not present")
+
+            # Also call the existing check function for warnings and tracking
+            check_rate_limit_headers(response, "read", account_id=account_id)
+
             data = response.json()
             page_items = data.get("data", [])
             all_items.extend(page_items)
 
-            logger.debug(f"Fetched {len(page_items)} {rule_level} items on page {page_count} (total so far: {len(all_items)})")
+            page_elapsed = time.time() - page_start_time
+            logger.info(f"[FETCH] Page {page_count} completed in {page_elapsed:.2f}s - Fetched {len(page_items)} items (total: {len(all_items)})")
 
             paging = data.get("paging", {})
             next_url = paging.get("next")
 
             if not next_url:
+                logger.info(f"[FETCH] No more pages - reached end of data")
                 break
 
-            url = next_url
-            time.sleep(READ_DELAY)
-            logger.debug(f"Waiting {READ_DELAY}s before fetching next {rule_level} page to avoid rate limiting")
+            # Ensure filtering parameter is preserved in next_url
+            # Facebook's next_url might not include our filtering parameter
+            try:
+                parsed = urlparse(next_url)
+                query_params = parse_qs(parsed.query)
 
-        logger.info(f"Fetched all {rule_level} items for account {account_id}: {len(all_items)} total across {page_count} page(s)")
+                # Check if filtering is already in the URL
+                if 'filtering' not in query_params:
+                    # Add our filtering parameter to preserve it across pagination
+                    query_params['filtering'] = [filtering_encoded]
+                    # Reconstruct the URL with filtering
+                    new_query = urlencode(query_params, doseq=True)
+                    next_url = urlunparse((
+                        parsed.scheme,
+                        parsed.netloc,
+                        parsed.path,
+                        parsed.params,
+                        new_query,
+                        parsed.fragment
+                    ))
+                    logger.debug(f"[FETCH] Added filtering parameter to next_url for page {page_count + 1}")
+            except Exception as e:
+                logger.warning(f"[FETCH] Could not parse/modify next_url: {e}. Using next_url as-is.")
+                # If parsing fails, try to append filtering manually
+                separator = '&' if '?' in next_url else '?'
+                next_url = f"{next_url}{separator}filtering={filtering_encoded}"
+
+            url = next_url
+
+            # Use 0.5s delay for all rule levels
+            delay = 0.5
+            logger.info(f"[FETCH] Waiting {delay:.2f}s before fetching next {rule_level} page to avoid rate limiting...")
+            time.sleep(delay)
+
+        total_elapsed = time.time() - start_time
+        logger.info(f"[FETCH] Completed fetching {rule_level} data for account {account_id}: {len(all_items)} total items across {page_count} page(s) in {total_elapsed:.2f}s")
         if all_items and len(all_items) > 0:
             # Log sample item to verify fields are present
             sample_item = all_items[0]
-            logger.debug(f"Sample {rule_level} item fields: {list(sample_item.keys())}")
+            logger.info(f"[FETCH] Sample {rule_level} item fields: {list(sample_item.keys())}")
             if rule_level == "ad":
-                logger.debug(f"Sample ad - id: {sample_item.get('id')}, name: {sample_item.get('name')}, bid_amount: {sample_item.get('bid_amount')}")
+                logger.info(f"[FETCH] Sample ad - id: {sample_item.get('id')}, name: {sample_item.get('name')}")
             # Log sample names for debugging
             sample_names = [item.get("name", "N/A") for item in all_items[:10]]
-            logger.info(f"Sample {rule_level} names (first 10): {sample_names}")
+            logger.info(f"[FETCH] Sample {rule_level} names (first 10): {sample_names}")
+        else:
+            logger.warning(f"[FETCH] No {rule_level} items found for account {account_id}")
         return all_items
     except requests.exceptions.RequestException as e:
         logger.error(f"Error fetching Facebook data: {str(e)}")
@@ -292,7 +569,7 @@ def fetch_insights(account_id: str, access_token: str, rule_level: str, ids: Lis
             batch_start_time = time.time()
             response = requests.get(url, timeout=60)
             response.raise_for_status()
-            check_rate_limit_headers(response, "insights")
+            check_rate_limit_headers(response, "insights", account_id=account_id)
             data = response.json()
             batch_elapsed = time.time() - batch_start_time
             logger.info(f"[TIMING] Insights batch {batch_num}/{total_batches} completed in {batch_elapsed:.2f} seconds - {len(batch_ids)} IDs, got {len(data.get('data', []))} insights")
@@ -449,7 +726,7 @@ def apply_scope_filters(data: List[Dict], scope_filters: Dict[str, Any], rule_le
                             else:
                                 response = requests.get(url, params=params, timeout=30)
                             response.raise_for_status()
-                            check_rate_limit_headers(response, "read")
+                            check_rate_limit_headers(response, "read", account_id=account_id)
 
                             data = response.json()
                             page_campaigns = data.get("data", [])
@@ -866,7 +1143,7 @@ def execute_action(account_id: str, access_token: str, rule_level: str, items: L
                 }
                 response = requests.post(url, params=params, timeout=30)
                 response.raise_for_status()
-                check_rate_limit_headers(response, "write")
+                check_rate_limit_headers(response, "write", account_id=account_id)
                 result["success"] = True
                 result["message"] = f"Status set to {status}"
                 logger.info(f"Successfully set status to {status} for {rule_level} {item_id}")
@@ -879,7 +1156,7 @@ def execute_action(account_id: str, access_token: str, rule_level: str, items: L
                     params = {"fields": "daily_budget", "access_token": access_token}
                     get_response = requests.get(url, params=params, timeout=30)
                     get_response.raise_for_status()
-                    check_rate_limit_headers(get_response, "read")
+                    check_rate_limit_headers(get_response, "read", account_id=account_id)
                     adset_data = get_response.json()
                     current_budget = float(adset_data.get("daily_budget", 0)) / 100  # Convert cents to dollars
 
@@ -1053,7 +1330,7 @@ def test_rule(db: Session, rule_id: int):
         # Step 1: Fetch data from Facebook API
         step_start_time = time.time()
         logger.info(f"[TIMING] Step 1 - Fetching {rule_level} data for rule {rule_id} (rule: {rule.name})")
-        all_data = fetch_facebook_data(account_id, access_token, rule_level)
+        all_data = fetch_facebook_data(account_id, access_token, rule_level, scope_filters=scope_filters)
         step_elapsed = time.time() - step_start_time
         logger.info(f"[TIMING] Step 1 completed in {step_elapsed:.2f} seconds - Fetched {len(all_data)} total {rule_level} items from Facebook API")
         log_details["data_fetch"] = {

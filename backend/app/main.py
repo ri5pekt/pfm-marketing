@@ -24,7 +24,7 @@ if os.getenv("ENVIRONMENT") != "production":
     except Exception as e:
         print(f"Note: Could not create default ad account: {e}")
 
-app = FastAPI(title="PFM Marketing API", version="2.0.0")
+app = FastAPI(title="PFM Marketing API", version="2.2.1")
 
 # CORS configuration
 import json

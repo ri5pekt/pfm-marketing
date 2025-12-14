@@ -112,13 +112,12 @@ def test_business_account_connection(db: Session, account_id: int, cooldown_seco
             "connection_last_checked": account.connection_last_checked
         }
 
-    # Test connection by fetching campaigns
+    # Test connection by making a simple API call (no pagination)
     try:
-        # Use a small limit (1) to minimize API usage
-        campaign_service.fetch_campaigns_from_meta(
+        # Use lightweight test function that only makes one API call
+        campaign_service.test_meta_connection(
             ad_account_id=account.meta_account_id,
-            access_token=account.meta_access_token,
-            limit=1
+            access_token=account.meta_access_token
         )
 
         # Connection successful

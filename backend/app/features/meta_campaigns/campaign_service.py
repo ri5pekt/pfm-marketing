@@ -64,7 +64,7 @@ def check_rate_limit_headers(response: requests.Response, api_type: str = "read"
                                 if isinstance(usage_item, dict):
                                     bc_call_count = usage_item.get("call_count", 0)
                                     bc_total_time = usage_item.get("total_time", 0)
-                                    
+
                                     # Warn if usage is high
                                     if bc_call_count > 80 or bc_total_time > 80:
                                         warnings.append(f"{header_name} ({account_id}): call_count={bc_call_count}, total_time={bc_total_time}")
@@ -81,6 +81,47 @@ def check_rate_limit_headers(response: requests.Response, api_type: str = "read"
             logger.warning(f"[RATE_LIMIT] ⚠️ HIGH USAGE WARNING ({api_type}): {'; '.join(warnings)}")
 
     return rate_limit_headers
+
+
+def test_meta_connection(ad_account_id: str, access_token: str) -> bool:
+    """
+    Test connection to Meta API by fetching a small chunk of campaigns (10).
+    Only fetches the first page with no pagination to verify credentials work.
+
+    Args:
+        ad_account_id: Meta Ad Account ID (e.g., "act_123456789")
+        access_token: Meta Access Token
+
+    Returns:
+        True if connection is successful, raises Exception otherwise
+    """
+    if not ad_account_id or not access_token:
+        raise ValueError("Ad Account ID and Access Token are required")
+
+    # Make a simple API call to test the connection
+    # Fetch 10 campaigns from the first page only (no pagination)
+    url = f"https://graph.facebook.com/v21.0/{ad_account_id}/campaigns"
+    params = {
+        "fields": "id,name,status,effective_status",
+        "limit": 10,
+        "access_token": access_token
+    }
+
+    try:
+        response = requests.get(url, params=params, timeout=30)
+        response.raise_for_status()
+        check_rate_limit_headers(response, "read")
+        data = response.json()
+        campaigns = data.get("data", [])
+        logger.info(f"Connection test successful: fetched {len(campaigns)} campaigns (first page only)")
+        # If we get here, the connection works
+        return True
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Connection test failed for ad account {ad_account_id}: {str(e)}")
+        raise Exception(f"Failed to connect to Meta API: {str(e)}")
+    except Exception as e:
+        logger.error(f"Unexpected error testing connection: {str(e)}")
+        raise
 
 
 def fetch_campaigns_from_meta(

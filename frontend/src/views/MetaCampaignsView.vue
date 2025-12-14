@@ -112,16 +112,27 @@
                     <p v-if="!loadingCampaigns">Click "Refresh" to load campaigns from Meta API</p>
                     <p v-else>Loading campaigns...</p>
                 </div>
-                <DataTable
-                    v-else
-                    :value="campaigns"
-                    :loading="loadingCampaigns"
-                    paginator
-                    :rows="10"
-                    :rowsPerPageOptions="[10, 20, 50]"
-                    class="campaigns-table"
-                    :rowHover="true"
-                >
+                <div v-else>
+                    <!-- Search Field -->
+                    <div class="campaign-search-field" style="margin-bottom: 1rem;">
+                        <span class="p-input-icon-left" style="width: 100%;">
+                            <i class="pi pi-search" />
+                            <InputText
+                                v-model="campaignSearchTerm"
+                                placeholder="Search campaigns by ID or name..."
+                                class="w-full"
+                            />
+                        </span>
+                    </div>
+                    <DataTable
+                        :value="filteredCampaigns"
+                        :loading="loadingCampaigns"
+                        paginator
+                        :rows="10"
+                        :rowsPerPageOptions="[10, 20, 50]"
+                        class="campaigns-table"
+                        :rowHover="true"
+                    >
                     <Column field="id" header="ID" sortable />
                     <Column field="name" header="Name" sortable>
                         <template #body="slotProps">
@@ -147,7 +158,8 @@
                             />
                         </template>
                     </Column>
-                </DataTable>
+                    </DataTable>
+                </div>
             </div>
 
             <!-- Ad Sets View -->
@@ -1527,6 +1539,7 @@ const confirm = useConfirm();
 const adAccounts = ref([]);
 const selectedAccount = ref(null);
 const campaigns = ref([]);
+const campaignSearchTerm = ref("");
 const adSets = ref([]);
 const ads = ref([]);
 const campaignsView = ref("campaigns"); // 'campaigns', 'adsets', 'ads'
@@ -1739,6 +1752,19 @@ const budgetDirectionOptions = [
     { label: "Decrease", value: "decrease" },
 ];
 
+// Computed: Filtered campaigns based on search term
+const filteredCampaigns = computed(() => {
+    if (!campaignSearchTerm.value || campaignSearchTerm.value.trim() === "") {
+        return campaigns.value;
+    }
+    const searchTerm = campaignSearchTerm.value.toLowerCase().trim();
+    return campaigns.value.filter((campaign) => {
+        const id = String(campaign.id || "").toLowerCase();
+        const name = String(campaign.name || "").toLowerCase();
+        return id.includes(searchTerm) || name.includes(searchTerm);
+    });
+});
+
 // Computed: Available scope types (excluding already added ones)
 const availableScopeTypes = computed(() => {
     const addedTypes = ruleForm.value.scopeFilters.map((s) => s.type);
@@ -1918,6 +1944,7 @@ function onAccountSelect(event) {
     selectedCampaign.value = null;
     selectedAdSet.value = null;
     showCampaigns.value = false;
+    campaignSearchTerm.value = ""; // Clear search when account changes
 }
 
 async function loadCampaigns() {
@@ -4923,6 +4950,29 @@ function getStatusSeverity(status) {
     display: flex;
     gap: 0.5rem;
     justify-content: flex-end;
+}
+
+.campaign-search-field {
+    width: 100%;
+}
+
+.campaign-search-field .p-input-icon-left {
+    position: relative;
+    display: block;
+    width: 100%;
+}
+
+.campaign-search-field .p-input-icon-left i {
+    position: absolute;
+    left: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #6b7280;
+    z-index: 1;
+}
+
+.campaign-search-field .p-input-icon-left .p-inputtext {
+    padding-left: 2.5rem;
 }
 
 /* Global styles for PrimeVue ConfirmDialog (rendered at app level) */
