@@ -710,6 +710,23 @@ def apply_scope_filters(data: List[Dict], scope_filters: Dict[str, Any], rule_le
                         else:
                             account_id_formatted = account_id
 
+                        # OPTIMIZATION: If campaign_ids is set, only fetch those specific campaigns
+                        campaign_ids_to_fetch = None
+                        campaign_filtering = None
+                        if "campaign_ids" in scope_filters and scope_filters["campaign_ids"]:
+                            campaign_ids_to_fetch = scope_filters["campaign_ids"]
+                            # Convert string to list if needed
+                            if isinstance(campaign_ids_to_fetch, str):
+                                campaign_ids_to_fetch = [id_val.strip() for id_val in campaign_ids_to_fetch.replace("\n", ",").split(",") if id_val.strip()]
+
+                            if isinstance(campaign_ids_to_fetch, list) and campaign_ids_to_fetch:
+                                campaign_filtering = json.dumps([{
+                                    "field": "id",
+                                    "operator": "IN",
+                                    "value": campaign_ids_to_fetch
+                                }])
+                                logger.info(f"Optimization: Only fetching {len(campaign_ids_to_fetch)} campaigns (from campaign_ids) for campaign_name_contains check")
+
                         all_campaigns = []
                         url = f"{base_url}/{account_id_formatted}/campaigns"
                         params = {
@@ -717,6 +734,11 @@ def apply_scope_filters(data: List[Dict], scope_filters: Dict[str, Any], rule_le
                             "limit": 2000,  # Use 2000 to minimize API calls
                             "access_token": access_token
                         }
+
+                        # Add filtering if campaign_ids is set
+                        if campaign_filtering:
+                            params["filtering"] = quote(campaign_filtering)
+
                         using_next_url = False
                         page_count = 0
                         while True:
@@ -737,6 +759,32 @@ def apply_scope_filters(data: List[Dict], scope_filters: Dict[str, Any], rule_le
 
                             if not next_url:
                                 break
+
+                            # Preserve filtering parameter in next_url if campaign_ids filter was used
+                            if campaign_filtering:
+                                try:
+                                    parsed = urlparse(next_url)
+                                    query_params = parse_qs(parsed.query)
+                                    # Check if filtering is already in the URL
+                                    if 'filtering' not in query_params:
+                                        # Add our filtering parameter to preserve it across pagination
+                                        query_params['filtering'] = [quote(campaign_filtering)]
+                                        # Reconstruct the URL with filtering
+                                        new_query = urlencode(query_params, doseq=True)
+                                        next_url = urlunparse((
+                                            parsed.scheme,
+                                            parsed.netloc,
+                                            parsed.path,
+                                            parsed.params,
+                                            new_query,
+                                            parsed.fragment
+                                        ))
+                                        logger.debug(f"Added filtering parameter to next_url for campaign_name_contains filter (page {page_count + 1})")
+                                except Exception as e:
+                                    logger.warning(f"Could not parse/modify next_url for campaign_name_contains filter: {e}. Using next_url as-is.")
+                                    # If parsing fails, try to append filtering manually
+                                    separator = '&' if '?' in next_url else '?'
+                                    next_url = f"{next_url}{separator}filtering={quote(campaign_filtering)}"
 
                             url = next_url
                             using_next_url = True
