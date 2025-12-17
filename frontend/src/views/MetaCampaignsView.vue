@@ -906,7 +906,6 @@
                                                 <InputNumber
                                                     v-else-if="isNumericField(condition.field)"
                                                     v-model="condition.value"
-                                                    :min="0"
                                                     :step="0.01"
                                                     :minFractionDigits="0"
                                                     :maxFractionDigits="6"
