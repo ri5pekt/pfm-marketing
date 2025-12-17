@@ -20,7 +20,8 @@ export async function httpRequest(url, options = {}) {
 
   const config = {
     ...options,
-    headers
+    headers,
+    signal: options.signal // Support AbortController signal
   }
 
   try {
@@ -35,6 +36,12 @@ export async function httpRequest(url, options = {}) {
 
     return await response.json()
   } catch (error) {
+    // Check if error is due to abort
+    if (error.name === 'AbortError' || error.message === 'The user aborted a request.') {
+      const abortError = new Error('Request cancelled')
+      abortError.name = 'AbortError'
+      throw abortError
+    }
     throw error
   }
 }

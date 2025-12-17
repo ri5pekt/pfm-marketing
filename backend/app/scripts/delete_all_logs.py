@@ -16,7 +16,7 @@ def delete_all_logs():
     try:
         count = db.query(RuleLog).count()
         logger.info(f"Found {count} log entries to delete")
-        
+
         if count > 0:
             db.query(RuleLog).delete()
             db.commit()

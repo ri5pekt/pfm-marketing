@@ -27,8 +27,8 @@ export async function getRuleLogs(ruleId) {
   return await get(`/app/meta-campaigns/rules/${ruleId}/logs`)
 }
 
-export async function testRule(ruleId) {
-  return await post(`/app/meta-campaigns/rules/${ruleId}/test`)
+export async function testRule(ruleId, signal = null) {
+  return await post(`/app/meta-campaigns/rules/${ruleId}/test`, null, { signal })
 }
 
 export async function deleteRuleLog(ruleId, logId) {

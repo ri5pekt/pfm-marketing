@@ -114,8 +114,8 @@
                 </div>
                 <div v-else>
                     <!-- Search Field -->
-                    <div class="campaign-search-field" style="margin-bottom: 1rem;">
-                        <span class="p-input-icon-left" style="width: 100%;">
+                    <div class="campaign-search-field" style="margin-bottom: 1rem">
+                        <span class="p-input-icon-left" style="width: 100%">
                             <i class="pi pi-search" />
                             <InputText
                                 v-model="campaignSearchTerm"
@@ -133,31 +133,31 @@
                         class="campaigns-table"
                         :rowHover="true"
                     >
-                    <Column field="id" header="ID" sortable />
-                    <Column field="name" header="Name" sortable>
-                        <template #body="slotProps">
-                            <div class="clickable-row" @click.stop="onCampaignClick({ data: slotProps.data })">
-                                {{ slotProps.data.name }}
-                                <i class="pi pi-chevron-right" style="margin-left: 0.5rem; color: #6b7280"></i>
-                            </div>
-                        </template>
-                    </Column>
-                    <Column field="status" header="Status" sortable>
-                        <template #body="slotProps">
-                            <Tag
-                                :value="slotProps.data.status"
-                                :severity="getCampaignStatusSeverity(slotProps.data.status)"
-                            />
-                        </template>
-                    </Column>
-                    <Column field="effective_status" header="Effective Status" sortable>
-                        <template #body="slotProps">
-                            <Tag
-                                :value="slotProps.data.effective_status"
-                                :severity="getCampaignStatusSeverity(slotProps.data.effective_status)"
-                            />
-                        </template>
-                    </Column>
+                        <Column field="id" header="ID" sortable />
+                        <Column field="name" header="Name" sortable>
+                            <template #body="slotProps">
+                                <div class="clickable-row" @click.stop="onCampaignClick({ data: slotProps.data })">
+                                    {{ slotProps.data.name }}
+                                    <i class="pi pi-chevron-right" style="margin-left: 0.5rem; color: #6b7280"></i>
+                                </div>
+                            </template>
+                        </Column>
+                        <Column field="status" header="Status" sortable>
+                            <template #body="slotProps">
+                                <Tag
+                                    :value="slotProps.data.status"
+                                    :severity="getCampaignStatusSeverity(slotProps.data.status)"
+                                />
+                            </template>
+                        </Column>
+                        <Column field="effective_status" header="Effective Status" sortable>
+                            <template #body="slotProps">
+                                <Tag
+                                    :value="slotProps.data.effective_status"
+                                    :severity="getCampaignStatusSeverity(slotProps.data.effective_status)"
+                                />
+                            </template>
+                        </Column>
                     </DataTable>
                 </div>
             </div>
@@ -300,15 +300,30 @@
                     <template #body="slotProps">
                         <div class="action-buttons">
                             <Button
-                                :icon="testingRuleId === slotProps.data.id ? 'pi pi-spin pi-spinner' : 'pi pi-play'"
+                                v-if="testingRuleId !== slotProps.data.id"
+                                icon="pi pi-play"
                                 severity="success"
                                 text
                                 rounded
-                                :loading="testingRuleId === slotProps.data.id"
-                                :disabled="testingRuleId === slotProps.data.id"
                                 @click="testRule(slotProps.data.id)"
                                 v-tooltip.top="'Test Rule'"
                             />
+                            <Button
+                                v-else
+                                severity="danger"
+                                text
+                                rounded
+                                @click="cancelTestRule()"
+                                v-tooltip.top="'Cancel Test'"
+                                class="cancel-test-button"
+                            >
+                                <ProgressSpinner
+                                    style="width: 14px; height: 14px; margin-right: 6px"
+                                    strokeWidth="3"
+                                    animationDuration="1s"
+                                />
+                                <i class="pi pi-times"></i>
+                            </Button>
                             <Button
                                 icon="pi pi-list"
                                 severity="info"
@@ -741,10 +756,14 @@
                                     placeholder="Enter amount"
                                     class="w-full"
                                     :class="{ 'p-invalid': formErrors.timeRangeAmount }"
+                                    :disabled="ruleForm.timeRangeUnit === 'today'"
                                 />
                                 <small v-if="formErrors.timeRangeAmount" class="p-error">{{
                                     formErrors.timeRangeAmount
                                 }}</small>
+                                <small v-if="ruleForm.timeRangeUnit === 'today'" class="p-text-secondary">
+                                    (Automatically set to 1 day for today only)
+                                </small>
                             </div>
                             <div class="field">
                                 <div class="flex align-items-center gap-2">
@@ -752,7 +771,9 @@
                                         v-model="ruleForm.excludeToday"
                                         inputId="excludeToday"
                                         :disabled="
-                                            ruleForm.timeRangeUnit === 'minutes' || ruleForm.timeRangeUnit === 'hours'
+                                            ruleForm.timeRangeUnit === 'minutes' ||
+                                            ruleForm.timeRangeUnit === 'hours' ||
+                                            ruleForm.timeRangeUnit === 'today'
                                         "
                                     />
                                     <label for="excludeToday" class="field-label">Exclude today</label>
@@ -762,6 +783,9 @@
                                     v-if="ruleForm.timeRangeUnit === 'minutes' || ruleForm.timeRangeUnit === 'hours'"
                                 >
                                     (No effect for minutes or hours)
+                                </small>
+                                <small class="p-text-secondary" v-if="ruleForm.timeRangeUnit === 'today'">
+                                    (Disabled for today only)
                                 </small>
                             </div>
                         </div>
@@ -792,7 +816,10 @@
                                     </div>
                                     <div class="condition-fields">
                                         <div class="field">
-                                            <label>Field *</label>
+                                            <div class="field-label-row">
+                                                <label>Field *</label>
+                                                <span></span>
+                                            </div>
                                             <Select
                                                 v-model="condition.field"
                                                 :options="availableConditionFields"
@@ -802,9 +829,14 @@
                                                 class="w-full"
                                                 @change="onConditionFieldChange(index)"
                                             />
+
+                                            <!-- (Removed) Extra metric config inputs (AOV/COGS/Margin/PSM) -->
                                         </div>
                                         <div class="field">
-                                            <label>Operator *</label>
+                                            <div class="field-label-row">
+                                                <label>Operator *</label>
+                                                <span></span>
+                                            </div>
                                             <Select
                                                 v-model="condition.operator"
                                                 :options="operatorOptions"
@@ -815,33 +847,111 @@
                                             />
                                         </div>
                                         <div class="field">
-                                            <label>Value *</label>
-                                            <Select
-                                                v-if="
-                                                    condition.field === 'status' ||
-                                                    condition.field === 'campaign_status'
+                                            <div class="field-label-row">
+                                                <label>Value *</label>
+                                                <!-- Special Value Button (show for all fields when rule level is set) -->
+                                                <Button
+                                                    v-if="ruleForm.ruleLevel && availableSpecialValues.length > 0"
+                                                    label="Add Special Value"
+                                                    severity="secondary"
+                                                    outlined
+                                                    @click="(event) => toggleSpecialValueMenu(index, event)"
+                                                    type="button"
+                                                    class="special-value-button-inline"
+                                                    :disabled="!condition.field"
+                                                    size="small"
+                                                />
+                                                <span v-else></span>
+                                            </div>
+                                            <div class="value-input-wrapper">
+                                                <Select
+                                                    v-if="
+                                                        condition.field === 'status' ||
+                                                        condition.field === 'campaign_status'
+                                                    "
+                                                    v-model="condition.value"
+                                                    :options="statusOptions"
+                                                    optionLabel="label"
+                                                    optionValue="value"
+                                                    placeholder="Select status"
+                                                    class="w-full value-input"
+                                                />
+
+                                                <!-- Special value selected: show base token + multiplier -->
+                                                <div
+                                                    v-else-if="isSpecialValue(condition.value)"
+                                                    class="special-value-row"
+                                                >
+                                                    <InputText
+                                                        class="value-input special-value"
+                                                        :modelValue="getSpecialBase(condition.value)"
+                                                        @update:modelValue="(v) => setSpecialBase(condition, v)"
+                                                        placeholder="__daily_budget__"
+                                                    />
+                                                    <div class="multiplier">
+                                                        <span class="multiplier-prefix">×</span>
+                                                        <InputNumber
+                                                            :modelValue="getSpecialMul(condition.value)"
+                                                            @update:modelValue="(v) => setSpecialMul(condition, v)"
+                                                            :min="0"
+                                                            :step="0.01"
+                                                            :minFractionDigits="0"
+                                                            :maxFractionDigits="6"
+                                                            placeholder="1"
+                                                            class="multiplier-input"
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                <InputNumber
+                                                    v-else-if="isNumericField(condition.field)"
+                                                    v-model="condition.value"
+                                                    :min="0"
+                                                    :step="0.01"
+                                                    :minFractionDigits="0"
+                                                    :maxFractionDigits="6"
+                                                    placeholder="Enter value"
+                                                    class="w-full value-input"
+                                                />
+                                                <InputText
+                                                    v-else
+                                                    v-model="condition.value"
+                                                    :placeholder="getValuePlaceholder(condition.field)"
+                                                    class="w-full value-input"
+                                                />
+                                            </div>
+                                            <!-- Show current special value label if one is selected -->
+                                            <small v-if="isSpecialValue(condition.value)" class="special-value-label">
+                                                {{ getSpecialValueLabel(condition.value) }}
+                                            </small>
+
+                                            <!-- Special Value Dropdown Menu -->
+                                            <OverlayPanel
+                                                :ref="
+                                                    (el) => {
+                                                        if (el && specialValueMenuRefs) {
+                                                            specialValueMenuRefs[index] = el;
+                                                        }
+                                                    }
                                                 "
-                                                v-model="condition.value"
-                                                :options="statusOptions"
-                                                optionLabel="label"
-                                                optionValue="value"
-                                                placeholder="Select status"
-                                                class="w-full"
-                                            />
-                                            <InputNumber
-                                                v-else-if="isNumericField(condition.field)"
-                                                v-model="condition.value"
-                                                :min="0"
-                                                :step="0.01"
-                                                placeholder="Enter value"
-                                                class="w-full"
-                                            />
-                                            <InputText
-                                                v-else
-                                                v-model="condition.value"
-                                                :placeholder="getValuePlaceholder(condition.field)"
-                                                class="w-full"
-                                            />
+                                                :dismissable="true"
+                                            >
+                                                <div class="special-values-menu">
+                                                    <div class="special-values-title">Special Values</div>
+                                                    <div
+                                                        v-for="(special, idx) in availableSpecialValues"
+                                                        :key="idx"
+                                                        class="special-value-item"
+                                                        @click="insertSpecialValue(index, special.value)"
+                                                    >
+                                                        <div class="special-value-item-label">{{ special.label }}</div>
+                                                        <div class="special-value-item-code">{{ special.value }}</div>
+                                                        <div class="special-value-item-desc">
+                                                            {{ special.description }}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </OverlayPanel>
                                         </div>
                                     </div>
                                 </div>
@@ -1353,18 +1463,82 @@
                             :key="condIdx"
                             class="condition-result"
                         >
-                            <Tag
-                                :value="cond.passed ? 'PASS' : 'FAIL'"
-                                :severity="cond.passed ? 'success' : 'danger'"
-                            />
-                            <span class="condition-text">
-                                {{ cond.field }} {{ cond.operator }} {{ cond.expected_value }} (actual:
+                            <div class="condition-header">
+                                <Tag
+                                    :value="cond.passed ? 'PASS' : 'FAIL'"
+                                    :severity="cond.passed ? 'success' : 'danger'"
+                                    class="condition-tag"
+                                />
+                                <span class="condition-text">
+                                    {{ cond.field }} {{ cond.operator }}
+                                    {{ cond.expected_expression ?? cond.expected_value }}
+                                </span>
+                            </div>
+                            <div class="p-text-secondary condition-compare-line">
+                                Compared: actual =
                                 {{
                                     cond.actual_value !== null && cond.actual_value !== undefined
                                         ? cond.actual_value
                                         : "N/A"
-                                }})
-                            </span>
+                                }}
+                                {{ cond.operator }}
+                                expected =
+                                {{
+                                    cond.expected_value !== null && cond.expected_value !== undefined
+                                        ? cond.expected_value
+                                        : "N/A"
+                                }}
+                            </div>
+                            <!-- Media Margin Volume Details (debug) -->
+                            <div v-if="cond.calculation_details" class="calculation-details">
+                                <div class="calculation-formula">
+                                    <strong>Formula:</strong> {{ cond.calculation_details.formula }}
+                                </div>
+                                <div class="calculation-breakdown">
+                                    <div>
+                                        <strong>Purchase Value:</strong>
+                                        ${{
+                                            (cond.calculation_details.purchase_value ?? 0).toFixed
+                                                ? cond.calculation_details.purchase_value.toFixed(2)
+                                                : cond.calculation_details.purchase_value
+                                        }}
+                                        <span class="p-text-secondary"
+                                            >(source: {{ cond.calculation_details.purchase_value_source }})</span
+                                        >
+                                    </div>
+                                    <div>
+                                        <strong>Spend:</strong>
+                                        ${{
+                                            (cond.calculation_details.spend ?? 0).toFixed
+                                                ? cond.calculation_details.spend.toFixed(2)
+                                                : cond.calculation_details.spend
+                                        }}
+                                    </div>
+                                    <div><strong>Purchases:</strong> {{ cond.calculation_details.purchase_count }}</div>
+                                    <div
+                                        v-if="
+                                            cond.calculation_details.aov !== null &&
+                                            cond.calculation_details.aov !== undefined
+                                        "
+                                    >
+                                        <strong>AOV:</strong> ${{ cond.calculation_details.aov.toFixed(2) }}
+                                    </div>
+                                    <div
+                                        v-if="
+                                            cond.calculation_details.cpp !== null &&
+                                            cond.calculation_details.cpp !== undefined
+                                        "
+                                    >
+                                        <strong>CPP:</strong> ${{ cond.calculation_details.cpp.toFixed(2) }}
+                                    </div>
+                                    <div class="calculation-result">
+                                        <strong>Result:</strong> ${{ cond.calculation_details.result.toFixed(2) }}
+                                    </div>
+                                    <div v-if="cond.calculation_details.note" class="p-text-secondary">
+                                        {{ cond.calculation_details.note }}
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                         <div class="condition-overall">
                             <strong>All Conditions Met:</strong>
@@ -1509,9 +1683,11 @@ import Select from "primevue/select";
 import Tag from "primevue/tag";
 import Toast from "primevue/toast";
 import ConfirmDialog from "primevue/confirmdialog";
+import ProgressSpinner from "primevue/progressspinner";
 import Chips from "primevue/chips";
 import TabView from "primevue/tabview";
 import TabPanel from "primevue/tabpanel";
+import OverlayPanel from "primevue/overlaypanel";
 import {
     getRules,
     createRule,
@@ -1557,17 +1733,20 @@ const loadingLogs = ref(false);
 const savingAccount = ref(false);
 const saving = ref(false);
 const testingRuleId = ref(null);
+const testRuleAbortController = ref(null);
 const testingConnection = ref(false);
 const showAdAccountDialog = ref(false);
 const showCreateDialog = ref(false);
 const showLogsDialog = ref(false);
 const showLogDetailsDialog = ref(false);
+// (Removed) expanded calculation details for legacy metrics
 const showCampaigns = ref(false);
 const editingAccount = ref(null);
 const editingRule = ref(null);
 const selectedLogDetails = ref(null);
 const connectionStatus = ref(null);
 const connectionLastChecked = ref(null);
+const specialValueMenuRefs = ref({}); // Refs for special value overlay menus per condition
 
 const accountForm = ref({
     name: "",
@@ -1695,6 +1874,7 @@ const timeRangeUnitOptions = [
     { label: "Minutes", value: "minutes" },
     { label: "Hours", value: "hours" },
     { label: "Days", value: "days" },
+    { label: "Today only", value: "today" },
 ];
 
 // Section 4: Operator options
@@ -1726,6 +1906,7 @@ const adSetConditionFields = [
     { label: "Conversions", value: "conversions" },
     { label: "ROAS", value: "roas" },
     { label: "Daily budget", value: "daily_budget" },
+    { label: "Media Margin Volume", value: "media_margin_volume" },
     { label: "Status", value: "status" },
     { label: "Campaign Status", value: "campaign_status" },
 ];
@@ -1751,6 +1932,25 @@ const budgetDirectionOptions = [
     { label: "Increase", value: "increase" },
     { label: "Decrease", value: "decrease" },
 ];
+
+// Special values/shortcodes available for condition values
+const specialValues = {
+    ad: [
+        { label: "Current Daily Budget", value: "__daily_budget__", description: "Adset's current daily budget" },
+        { label: "Current Spend", value: "__current_spend__", description: "Current spend in time range" },
+    ],
+    ad_set: [
+        { label: "Current Daily Budget", value: "__daily_budget__", description: "Adset's current daily budget" },
+        { label: "Lifetime Budget", value: "__lifetime_budget__", description: "Adset's lifetime budget" },
+        { label: "Current Spend", value: "__current_spend__", description: "Current spend in time range" },
+    ],
+    campaign: [{ label: "Current Spend", value: "__current_spend__", description: "Current spend in time range" }],
+};
+
+// Computed property to get available special values for current rule level
+const availableSpecialValues = computed(() => {
+    return specialValues[ruleForm.value.ruleLevel] || [];
+});
 
 // Computed: Filtered campaigns based on search term
 const filteredCampaigns = computed(() => {
@@ -1852,6 +2052,21 @@ watch(selectedAccount, async (newAccount) => {
         rules.value = [];
     }
 });
+
+// Watch timeRangeUnit to auto-set amount when "today" is selected
+watch(
+    () => ruleForm.value.timeRangeUnit,
+    (newUnit) => {
+        if (newUnit === "today") {
+            ruleForm.value.timeRangeAmount = 1;
+            ruleForm.value.excludeToday = false;
+            // Clear any validation errors for timeRangeAmount
+            if (formErrors.value.timeRangeAmount) {
+                delete formErrors.value.timeRangeAmount;
+            }
+        }
+    }
+);
 
 function getRulesCountForAccount(accountId) {
     if (!accountId) return 0;
@@ -2290,8 +2505,81 @@ function removeScopeFilter(index) {
 
 // Helper functions for conditions
 function isNumericField(field) {
-    const numericFields = ["cpp", "spend", "conversions", "ctr", "cpc", "cpm", "roas", "daily_budget"];
+    const numericFields = [
+        "cpp",
+        "spend",
+        "conversions",
+        "ctr",
+        "cpc",
+        "cpm",
+        "roas",
+        "daily_budget",
+        "media_margin_volume",
+    ];
     return numericFields.includes(field);
+}
+
+// Check if a value is a special value (supports legacy string and structured { base, mul } object)
+function isSpecialValue(value) {
+    if (!value) return false;
+    const base =
+        typeof value === "string"
+            ? value
+            : typeof value === "object" && typeof value.base === "string"
+            ? value.base
+            : null;
+    return !!base && String(base).startsWith("__") && String(base).endsWith("__");
+}
+
+function getSpecialBase(value) {
+    if (!value) return "";
+    return typeof value === "string" ? value : value.base || "";
+}
+
+function getSpecialMul(value) {
+    if (!value) return 1;
+    if (typeof value === "object" && value.mul !== undefined && value.mul !== null) return Number(value.mul);
+    return 1;
+}
+
+function setSpecialBase(condition, base) {
+    const baseStr = base === null || base === undefined ? "" : String(base);
+
+    // Normalize legacy string -> object
+    if (typeof condition.value === "string" && isSpecialValue(condition.value)) {
+        condition.value = { base: baseStr, mul: 1 };
+        return;
+    }
+
+    if (typeof condition.value === "object" && condition.value) {
+        condition.value.base = baseStr;
+        if (condition.value.mul === undefined) condition.value.mul = 1;
+    } else {
+        condition.value = { base: baseStr, mul: 1 };
+    }
+}
+
+function setSpecialMul(condition, mul) {
+    const safeMul = mul === null || mul === undefined || mul === "" ? 1 : Number(mul);
+
+    // Normalize legacy string -> object
+    if (typeof condition.value === "string" && isSpecialValue(condition.value)) {
+        condition.value = { base: condition.value, mul: safeMul };
+        return;
+    }
+
+    if (typeof condition.value === "object" && condition.value) {
+        condition.value.mul = safeMul;
+    }
+}
+
+// Get the label for a special value
+function getSpecialValueLabel(value) {
+    if (!isSpecialValue(value)) return "";
+    const base = getSpecialBase(value);
+    const allValues = [...specialValues.ad, ...specialValues.ad_set, ...specialValues.campaign];
+    const found = allValues.find((sv) => sv.value === base);
+    return found ? found.label : base;
 }
 
 function getValuePlaceholder(field) {
@@ -2318,6 +2606,23 @@ function removeCondition(index) {
 function onConditionFieldChange(index) {
     // Reset value when field changes
     ruleForm.value.conditions[index].value = null;
+}
+
+// Toggle special value menu
+function toggleSpecialValueMenu(conditionIndex, event) {
+    if (specialValueMenuRefs.value && specialValueMenuRefs.value[conditionIndex]) {
+        specialValueMenuRefs.value[conditionIndex].toggle(event);
+    }
+}
+
+// Insert special value into condition
+function insertSpecialValue(conditionIndex, specialValue) {
+    // Store as structured value so we can apply multiplier in backend
+    ruleForm.value.conditions[conditionIndex].value = { base: specialValue, mul: 1 };
+    // Close the overlay if it exists
+    if (specialValueMenuRefs.value && specialValueMenuRefs.value[conditionIndex]) {
+        specialValueMenuRefs.value[conditionIndex].hide();
+    }
 }
 
 // Helper functions for actions
@@ -2441,14 +2746,17 @@ function ruleFormToJSON() {
         rule_level: ruleForm.value.ruleLevel,
         time_range: {
             unit: ruleForm.value.timeRangeUnit,
-            amount: ruleForm.value.timeRangeAmount,
-            exclude_today: ruleForm.value.excludeToday,
+            amount: ruleForm.value.timeRangeUnit === "today" ? 1 : ruleForm.value.timeRangeAmount || 1,
+            exclude_today: ruleForm.value.timeRangeUnit === "today" ? false : ruleForm.value.excludeToday,
         },
-        conditions: ruleForm.value.conditions.map((c) => ({
-            field: c.field,
-            operator: c.operator,
-            value: c.value,
-        })),
+        conditions: ruleForm.value.conditions.map((c) => {
+            const conditionObj = {
+                field: c.field,
+                operator: c.operator,
+                value: c.value,
+            };
+            return conditionObj;
+        }),
         ...scopeObject,
     };
 
@@ -2513,8 +2821,11 @@ function validateRuleJSON(json) {
             if (!json.conditions.time_range.unit) {
                 errors.push("'conditions.time_range.unit' is required");
             }
-            if (!json.conditions.time_range.amount || json.conditions.time_range.amount < 1) {
-                errors.push("'conditions.time_range.amount' is required and must be at least 1");
+            // For "today" unit, amount is automatically 1, so skip validation
+            if (json.conditions.time_range.unit !== "today") {
+                if (!json.conditions.time_range.amount || json.conditions.time_range.amount < 1) {
+                    errors.push("'conditions.time_range.amount' is required and must be at least 1");
+                }
             }
         }
         if (!Array.isArray(json.conditions.conditions)) {
@@ -2584,7 +2895,15 @@ function jsonToRuleForm(json) {
     }
 
     // Parse conditions array
-    const conditionsArray = conditions.conditions || [];
+    const conditionsArray = (conditions.conditions || []).map((c) => {
+        const condition = {
+            field: c.field,
+            operator: c.operator,
+            value: c.value,
+        };
+
+        return condition;
+    });
 
     // Parse actions array
     const actionsArray = (actions.actions || []).map((action) => {
@@ -2619,8 +2938,9 @@ function jsonToRuleForm(json) {
         scopeFilters: scopeFilters,
         // Section 3
         timeRangeUnit: timeRange.unit || null,
-        timeRangeAmount: timeRange.amount || null,
-        excludeToday: timeRange.exclude_today !== undefined ? timeRange.exclude_today : true,
+        timeRangeAmount: timeRange.unit === "today" ? 1 : timeRange.amount || null,
+        excludeToday:
+            timeRange.unit === "today" ? false : timeRange.exclude_today !== undefined ? timeRange.exclude_today : true,
         // Section 4 (UI array)
         conditions: conditionsArray,
         // Section 5 (UI array)
@@ -2793,7 +3113,27 @@ function editRule(rule) {
     }
 
     // Parse conditions array
-    const conditionsArray = conditions.conditions || [];
+    const conditionsArray = (conditions.conditions || []).map((c) => {
+        let value = c.value;
+
+        // Normalize legacy special values (string) to structured form
+        if (typeof value === "string" && isSpecialValue(value)) {
+            value = { base: value, mul: 1 };
+        }
+
+        // Normalize structured values missing multiplier
+        if (typeof value === "object" && value && typeof value.base === "string" && value.mul === undefined) {
+            value = { ...value, mul: 1 };
+        }
+
+        const condition = {
+            field: c.field,
+            operator: c.operator,
+            value,
+        };
+
+        return condition;
+    });
 
     // Parse actions array and ensure sendSlackNotification is set
     const actionsArray = (actions.actions || []).map((action) => {
@@ -2828,8 +3168,9 @@ function editRule(rule) {
         scopeFilters: scopeFilters,
         // Section 3
         timeRangeUnit: timeRange.unit || null,
-        timeRangeAmount: timeRange.amount || null,
-        excludeToday: timeRange.exclude_today !== undefined ? timeRange.exclude_today : true,
+        timeRangeAmount: timeRange.unit === "today" ? 1 : timeRange.amount || null,
+        excludeToday:
+            timeRange.unit === "today" ? false : timeRange.exclude_today !== undefined ? timeRange.exclude_today : true,
         // Section 4 (UI array)
         conditions: conditionsArray,
         // Section 5 (UI array)
@@ -3370,9 +3711,11 @@ function validateForm() {
     // Section 3: Time Range
     if (!ruleForm.value.timeRangeUnit) {
         formErrors.value.timeRangeUnit = "Time unit is required";
-    }
-    if (!ruleForm.value.timeRangeAmount || ruleForm.value.timeRangeAmount < 1) {
-        formErrors.value.timeRangeAmount = "Time amount is required and must be at least 1";
+    } else if (ruleForm.value.timeRangeUnit !== "today") {
+        // For "today" unit, amount is automatically 1, so skip validation
+        if (!ruleForm.value.timeRangeAmount || ruleForm.value.timeRangeAmount < 1) {
+            formErrors.value.timeRangeAmount = "Time amount is required and must be at least 1";
+        }
     }
 
     // Section 6: Schedule
@@ -3499,14 +3842,17 @@ async function saveRule() {
         rule_level: ruleForm.value.ruleLevel,
         time_range: {
             unit: ruleForm.value.timeRangeUnit,
-            amount: ruleForm.value.timeRangeAmount,
-            exclude_today: ruleForm.value.excludeToday,
+            amount: ruleForm.value.timeRangeUnit === "today" ? 1 : ruleForm.value.timeRangeAmount || 1,
+            exclude_today: ruleForm.value.timeRangeUnit === "today" ? false : ruleForm.value.excludeToday,
         },
-        conditions: ruleForm.value.conditions.map((c) => ({
-            field: c.field,
-            operator: c.operator,
-            value: c.value,
-        })),
+        conditions: ruleForm.value.conditions.map((c) => {
+            const conditionObj = {
+                field: c.field,
+                operator: c.operator,
+                value: c.value,
+            };
+            return conditionObj;
+        }),
         ...scopeObject,
     };
 
@@ -3610,8 +3956,10 @@ function confirmDelete(rule) {
 
 async function testRule(ruleId) {
     testingRuleId.value = ruleId;
+    // Create AbortController for cancellation
+    testRuleAbortController.value = new AbortController();
     try {
-        const result = await testRuleApi(ruleId);
+        const result = await testRuleApi(ruleId, testRuleAbortController.value.signal);
         toast.add({
             severity: result.decision === "proceed" ? "success" : "info",
             summary: "Rule Test Complete",
@@ -3625,16 +3973,37 @@ async function testRule(ruleId) {
             await viewLogs(ruleId);
         }
     } catch (error) {
-        toast.add({
-            severity: "error",
-            summary: "Error",
-            detail: error.message || "Failed to test rule",
-            life: 5000,
-        });
+        // Don't show error toast if it was cancelled
+        if (error.name === "AbortError" || error.message?.includes("aborted")) {
+            toast.add({
+                severity: "info",
+                summary: "Test Cancelled",
+                detail: "Rule test was cancelled",
+                life: 3000,
+            });
+        } else {
+            toast.add({
+                severity: "error",
+                summary: "Error",
+                detail: error.message || "Failed to test rule",
+                life: 5000,
+            });
+        }
     } finally {
         testingRuleId.value = null;
+        testRuleAbortController.value = null;
     }
 }
+
+function cancelTestRule() {
+    if (testRuleAbortController.value) {
+        testRuleAbortController.value.abort();
+        testingRuleId.value = null;
+        testRuleAbortController.value = null;
+    }
+}
+
+// (Removed) toggleCalculationDetails for legacy metric breakdown UI
 
 const currentRuleForLogs = ref(null);
 
@@ -4422,6 +4791,194 @@ function getStatusSeverity(status) {
     gap: 1rem;
     max-width: 100%;
     overflow-x: hidden;
+    width: 100%;
+    box-sizing: border-box;
+    align-items: start;
+}
+
+/* Make Operator column narrower and give Value more room on wider screens */
+@media (min-width: 640px) {
+    .condition-fields {
+        grid-template-columns: minmax(240px, 1fr) minmax(104px, 132px) minmax(360px, 2fr);
+    }
+}
+
+.condition-fields .field,
+.action-fields .field {
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.condition-fields .field > *,
+.action-fields .field > * {
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.condition-fields .field label,
+.action-fields .field label {
+    margin-bottom: 0;
+}
+
+/* Special value styling */
+.field-label-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+    height: 1.75rem;
+    min-height: 1.75rem;
+    max-height: 1.75rem;
+}
+
+.field-label-row label {
+    margin-bottom: 0;
+    flex: 1;
+    line-height: 1.75rem;
+}
+
+.field-label-row > span:last-child {
+    flex-shrink: 0;
+    width: auto;
+    min-width: 0;
+}
+
+.special-value-button-inline {
+    flex-shrink: 0;
+    padding: 0.25rem 0.5rem !important;
+    height: auto !important;
+    min-height: 1.75rem !important;
+    max-height: 1.75rem !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    margin: 0 !important;
+    line-height: 1 !important;
+    white-space: nowrap !important;
+    border: 1px solid #d1d5db !important;
+    border-radius: 0.375rem !important;
+    background-color: #ffffff !important;
+}
+
+.special-value-button-inline :deep(.p-button) {
+    height: auto !important;
+    min-height: 1.75rem !important;
+    max-height: 1.75rem !important;
+    padding: 0.25rem 0.5rem !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    border: 1px solid #d1d5db !important;
+    border-radius: 0.375rem !important;
+    background-color: #ffffff !important;
+    color: #374151 !important;
+}
+
+.special-value-button-inline:hover :deep(.p-button) {
+    background-color: #f9fafb !important;
+    border-color: #9ca3af !important;
+    color: #1f2937 !important;
+}
+
+.special-value-button-inline:disabled :deep(.p-button),
+.special-value-button-inline :deep(.p-button:disabled) {
+    opacity: 0.5 !important;
+    cursor: not-allowed !important;
+}
+
+.special-value-button-inline :deep(.p-button-label) {
+    font-size: 0.75rem !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    line-height: 1 !important;
+    white-space: nowrap !important;
+    font-weight: 500 !important;
+}
+
+.value-input-wrapper {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    overflow: visible;
+    min-width: 0;
+}
+
+.value-input-wrapper .value-input,
+.value-input-wrapper :deep(.p-inputtext),
+.value-input-wrapper :deep(.p-inputnumber),
+.value-input-wrapper :deep(.p-inputnumber input),
+.value-input-wrapper :deep(.p-select),
+.value-input-wrapper :deep(.p-select .p-inputtext),
+.value-input-wrapper :deep(.p-select .p-inputtext input) {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    min-width: 0 !important;
+}
+
+.special-value {
+    border-color: #3b82f6 !important;
+    background-color: #eff6ff !important;
+}
+
+.special-value-label {
+    display: block;
+    color: #3b82f6;
+    font-weight: 500;
+    margin-top: 0.25rem;
+    font-size: 0.875rem;
+}
+
+.special-values-menu {
+    min-width: 280px;
+    padding: 0.5rem 0;
+}
+
+.special-values-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    padding: 0 0.75rem;
+    color: #374151;
+}
+
+.special-value-item {
+    padding: 0.75rem;
+    cursor: pointer;
+    border-bottom: 1px solid #e5e7eb;
+    transition: background-color 0.2s;
+}
+
+.special-value-item:last-child {
+    border-bottom: none;
+}
+
+.special-value-item:hover {
+    background-color: #f3f4f6;
+}
+
+.special-value-item-label {
+    font-weight: 500;
+    color: #1f2937;
+    margin-bottom: 0.25rem;
+    font-size: 0.875rem;
+}
+
+.special-value-item-code {
+    font-size: 0.75rem;
+    color: #6b7280;
+    font-family: monospace;
+    margin-bottom: 0.125rem;
+}
+
+.special-value-item-desc {
+    font-size: 0.75rem;
+    color: #9ca3af;
 }
 
 .rule-builder-dialog :deep(.p-dialog) {
@@ -4550,6 +5107,22 @@ function getStatusSeverity(status) {
     overflow-x: hidden;
 }
 
+/* Rule builder: fixed 3-column layout (Field / Operator / Value) */
+@media (min-width: 640px) {
+    .rule-builder-dialog .condition-fields {
+        grid-template-columns: 3fr 1fr 3fr;
+        align-items: start;
+    }
+}
+
+/* Ensure grid children are allowed to shrink inside fr columns (prevents overflow) */
+.rule-builder-dialog .condition-fields > .field {
+    min-width: 0;
+}
+.rule-builder-dialog .condition-fields > .field > * {
+    min-width: 0;
+}
+
 .rule-builder-dialog :deep(.p-dialog-content) {
     max-height: calc(90vh - 150px);
     overflow-y: auto;
@@ -4620,24 +5193,136 @@ function getStatusSeverity(status) {
 }
 
 .log-section h5 {
-    margin: 1rem 0 0.5rem 0;
+    margin: 0.5rem 0 0.25rem 0;
     font-size: 0.95rem;
     font-weight: 600;
     color: #374151;
 }
 
 .evaluation-item {
-    margin-bottom: 1.5rem;
-    padding: 1rem;
+    margin-bottom: 0.75rem;
+    padding: 0.5rem;
     background-color: #f9fafb;
     border-radius: 6px;
 }
 
 .condition-result {
     display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin: 0.25rem 0;
+    padding: 0.5rem;
+    background-color: #f9fafb;
+    border-radius: 0.375rem;
+    border-left: 3px solid #e5e7eb;
+}
+
+.condition-result:first-child {
+    margin-top: 0;
+}
+
+.condition-result:last-child {
+    margin-bottom: 0;
+}
+
+.condition-result .condition-header {
+    display: flex;
     align-items: center;
+    justify-content: flex-start;
     gap: 0.5rem;
-    margin: 0.5rem 0;
+    flex-wrap: wrap;
+    margin-bottom: 0;
+}
+
+.condition-expand-icon {
+    cursor: pointer;
+    color: #6b7280;
+    font-size: 0.875rem;
+    margin-left: auto;
+    transition: transform 0.2s ease;
+    flex-shrink: 0;
+}
+
+.condition-expand-icon:hover {
+    color: #374151;
+}
+
+.condition-tag {
+    flex-shrink: 0;
+}
+
+.calculation-details {
+    margin-top: 0.25rem;
+    margin-bottom: 0;
+    padding: 0.5rem;
+    background-color: #ffffff;
+    border-radius: 0.375rem;
+    border: 1px solid #e5e7eb;
+    font-size: 0.75rem;
+}
+
+.calculation-formula {
+    margin-bottom: 0.5rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #e5e7eb;
+    color: #374151;
+    font-size: 0.7rem;
+}
+
+.calculation-breakdown {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.calculation-breakdown > div {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    color: #4b5563;
+}
+
+.calculation-source {
+    font-size: 0.75rem;
+    color: #6b7280;
+    font-style: italic;
+}
+
+.calculation-step {
+    font-size: 0.75rem;
+    color: #6b7280;
+    margin-left: 0.5rem;
+}
+
+.calculation-error {
+    color: #dc2626;
+    font-weight: 500;
+}
+
+.calculation-result {
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid #e5e7eb;
+    font-weight: 600;
+    color: #1f2937;
+}
+
+.cancel-test-button {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    min-width: 2.5rem;
+}
+
+.cancel-test-button .p-progressspinner {
+    display: inline-block;
+    flex-shrink: 0;
+}
+
+.cancel-test-button .p-progressspinner circle {
+    stroke: #dc2626;
 }
 
 .condition-text {
@@ -4691,8 +5376,8 @@ function getStatusSeverity(status) {
 }
 
 .condition-overall {
-    margin-top: 0.75rem;
-    padding-top: 0.75rem;
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
     border-top: 1px solid #e5e7eb;
     display: flex;
     align-items: center;
@@ -4976,6 +5661,44 @@ function getStatusSeverity(status) {
 }
 
 /* Global styles for PrimeVue ConfirmDialog (rendered at app level) */
+</style>
+<style>
+/* Structured special value (base + multiplier) layout */
+.special-value-row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    width: 100%;
+    flex-wrap: nowrap;
+}
+.special-value-row :deep(.p-inputtext),
+.special-value-row :deep(.p-inputnumber),
+.special-value-row :deep(.p-inputnumber input) {
+    min-width: 0;
+    width: auto !important; /* override .value-input-wrapper forcing 100% width */
+}
+.special-value-row .value-input.special-value {
+    /* Intentionally rely on default sizing from .value-input-wrapper rules */
+    width: auto !important;
+}
+.special-value-row .multiplier {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    white-space: nowrap;
+    flex: 1 0 80px;
+}
+.special-value-row .multiplier-input {
+    width: 44px !important;
+}
+.special-value-row .multiplier :deep(.p-inputnumber),
+.special-value-row .multiplier :deep(.p-inputnumber input) {
+    width: 44px !important; /* ensure PrimeVue internal input matches */
+}
+.special-value-row .multiplier-prefix {
+    font-weight: 600;
+    opacity: 0.8;
+}
 </style>
 
 <style>

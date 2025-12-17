@@ -10,6 +10,43 @@ from urllib.parse import quote, urlparse, parse_qs, urlencode, urlunparse
 
 logger = logging.getLogger(__name__)
 
+# ----------------------------
+# Shared helpers (module-level)
+# ----------------------------
+def _safe_float_any(value, default=0.0) -> float:
+    if value is None or value == "":
+        return default
+    try:
+        return float(str(value).replace(",", "").replace("$", ""))
+    except (ValueError, TypeError):
+        return default
+
+
+def _pick_canonical_purchase_action_value(items, preferred_types):
+    """
+    Meta often returns multiple overlapping purchase action_type variants.
+    This helper returns (value, chosen_action_type, by_type_dict) considering only action_types containing 'purchase'.
+    """
+    by_type = {}
+    if isinstance(items, list):
+        for it in items:
+            if isinstance(it, dict):
+                at = it.get("action_type")
+                if not at:
+                    continue
+                at_str = str(at)
+                if "purchase" not in at_str.lower():
+                    continue
+                by_type[at_str] = _safe_float_any(it.get("value"), 0.0)
+
+    for t in preferred_types:
+        if t in by_type:
+            return by_type[t], t, by_type
+    if by_type:
+        first_key = sorted(by_type.keys())[0]
+        return by_type[first_key], first_key, by_type
+    return 0.0, "none", by_type
+
 # API call delays to prevent rate limiting
 READ_DELAY = 0.3  # Delay between read API calls (300ms)
 WRITE_DELAY = 0.7  # Delay between write API calls (700ms)
@@ -278,7 +315,14 @@ def create_rule_log(db: Session, rule_id: int, status: str, message: str, detail
     return log
 
 
-def fetch_facebook_data(account_id: str, access_token: str, rule_level: str, limit: int = None, scope_filters: Dict[str, Any] = None):
+def fetch_facebook_data(
+    account_id: str,
+    access_token: str,
+    rule_level: str,
+    limit: int = None,
+    scope_filters: Dict[str, Any] = None,
+    effective_status_in: List[str] | None = None,
+):
     """
     Fetch all campaigns, adsets, or ads from Facebook API with pagination support.
     Loads all items across multiple pages, not just the first page.
@@ -325,6 +369,23 @@ def fetch_facebook_data(account_id: str, access_token: str, rule_level: str, lim
         fields = "id,name,status,effective_status"
         # Filter out archived and deleted campaigns, but keep paused
         filtering = '[{"field":"effective_status","operator":"NOT_IN","value":["ARCHIVED","DELETED"]}]'
+
+    # If rule conditions include an explicit status filter, apply it at API level to reduce payload.
+    # We use effective_status because it is filterable and matches the statuses used in the UI (ACTIVE/PAUSED/etc.).
+    if effective_status_in:
+        try:
+            filter_list = json.loads(filtering)
+        except json.JSONDecodeError:
+            filter_list = []
+        status_filter = {
+            "field": "effective_status",
+            "operator": "IN",
+            "value": [str(s) for s in effective_status_in if s],
+        }
+        if status_filter["value"]:
+            filter_list.append(status_filter)
+            filtering = json.dumps(filter_list)
+            logger.info(f"[FETCH] Added effective_status IN filter to API request: {status_filter['value']}")
 
     # Add campaign_ids filter to API request if provided in scope_filters
     if scope_filters and "campaign_ids" in scope_filters and scope_filters["campaign_ids"]:
@@ -528,7 +589,12 @@ def fetch_insights(account_id: str, access_token: str, rule_level: str, ids: Lis
     time_range_str = build_time_range_string(time_range)
 
     # Fields to fetch
-    fields = "campaign_id,adset_id,ad_id,spend,impressions,clicks,cpc,cpm,ctr,actions,cost_per_action_type"
+    # NOTE:
+    # - Meta does not provide a direct "AOV" metric; we derive it when needed from purchase value / purchase count.
+    # - For "Media Margin Volume" we need both purchase count and purchase value.
+    # - Use action_values (purchase) to derive purchase value. (Meta may show "purchase conversion value" in UI,
+    #   but it is not a valid Insights field to request directly in v21.0.)
+    fields = "campaign_id,adset_id,ad_id,spend,impressions,clicks,cpc,cpm,ctr,actions,action_values,cost_per_action_type"
 
     if rule_level == "ad":
         level = "ad"
@@ -559,15 +625,26 @@ def fetch_insights(account_id: str, access_token: str, rule_level: str, ids: Lis
             filter_field = "adset.id"
         else:  # campaign
             filter_field = "campaign.id"
-        filtering = f"[{{\"field\":\"{filter_field}\",\"operator\":\"IN\",\"value\":[{','.join([f'\"{id_val}\"' for id_val in batch_ids])}]}}]"
+        filtering_obj = [{"field": filter_field, "operator": "IN", "value": batch_ids}]
 
-        # Add action_breakdowns parameter to get cost_per_action_type properly populated
-        url = f"{endpoint}?level={level}&fields={fields}&time_range={time_range_str}&filtering={filtering}&action_breakdowns=action_type&access_token={access_token}"
-        logger.info(f"[TIMING] Fetching insights batch {batch_num}/{total_batches}: level={level}, time_range={time_range_str}, batch_size={len(batch_ids)}")
+        # IMPORTANT: pass JSON params via requests params so they're properly URL-encoded
+        params = {
+            "level": level,
+            "fields": fields,
+            "time_range": time_range_str,
+            "filtering": json.dumps(filtering_obj),
+            # Add action_breakdowns parameter to get cost_per_action_type properly populated
+            "action_breakdowns": "action_type",
+            "access_token": access_token,
+        }
+
+        logger.info(
+            f"[TIMING] Fetching insights batch {batch_num}/{total_batches}: level={level}, time_range={time_range_str}, batch_size={len(batch_ids)}"
+        )
 
         try:
             batch_start_time = time.time()
-            response = requests.get(url, timeout=60)
+            response = requests.get(endpoint, params=params, timeout=60)
             response.raise_for_status()
             check_rate_limit_headers(response, "insights", account_id=account_id)
             data = response.json()
@@ -578,11 +655,26 @@ def fetch_insights(account_id: str, access_token: str, rule_level: str, ids: Lis
                 # Log first insight to see structure
                 first_insight = data["data"][0]
                 logger.info(f"Sample insight structure: {list(first_insight.keys())}, spend={first_insight.get('spend')}, impressions={first_insight.get('impressions')}")
+                # Log purchase-related fields for debugging ROAS/revenue signals
+                av = first_insight.get("action_values") or []
+                purchase_value_dbg = 0
+                if isinstance(av, list):
+                    for x in av:
+                        if isinstance(x, dict) and "purchase" in (x.get("action_type") or "").lower():
+                            purchase_value_dbg += float(str(x.get("value", 0)).replace(",", "").replace("$", "") or 0)
+                logger.info(f"Purchase value (from action_values purchase sum): {purchase_value_dbg}")
                 # Log cost_per_action_type if present
                 if "cost_per_action_type" in first_insight:
                     logger.info(f"cost_per_action_type sample: {first_insight.get('cost_per_action_type')}")
                 else:
                     logger.warning(f"cost_per_action_type not found in insights response. Available fields: {list(first_insight.keys())}")
+                # Log actions array for purchase data
+                if "actions" in first_insight:
+                    purchase_actions = [a for a in first_insight.get("actions", []) if isinstance(a, dict) and "purchase" in a.get("action_type", "").lower()]
+                    if purchase_actions:
+                        logger.info(f"Purchase actions found: {purchase_actions}")
+                    else:
+                        logger.info(f"Actions array: {first_insight.get('actions')}")
             if data.get("data"):
                 for insight in data["data"]:
                     obj_id = insight.get(f"{level}_id") or insight.get("id")
@@ -624,6 +716,14 @@ def build_time_range_string(time_range: Dict[str, Any]) -> str:
     unit = time_range.get("unit", "days")
     amount = time_range.get("amount", 1)
     exclude_today = time_range.get("exclude_today", True)
+
+    # Handle "today" unit - from 00:00 today to now
+    if unit == "today":
+        start_time = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        end_time = datetime.now()
+        # Format as JSON string for Facebook API
+        logger.debug(f"Time range (today only): {start_time.strftime('%Y-%m-%d')} to {end_time.strftime('%Y-%m-%d')}")
+        return f"{{\"since\":\"{start_time.strftime('%Y-%m-%d')}\",\"until\":\"{end_time.strftime('%Y-%m-%d')}\"}}"
 
     end_time = datetime.now()
     if exclude_today and unit == "days":
@@ -848,7 +948,12 @@ def apply_scope_filters(data: List[Dict], scope_filters: Dict[str, Any], rule_le
 
 
 def calculate_metric_from_insights(insights: Dict, field: str) -> float:
-    """Calculate a metric value from insights data"""
+    """Calculate a metric value from insights data
+
+    Args:
+        insights: Insights data from Facebook API
+        field: Field name to calculate
+    """
     if not insights or len(insights) == 0:
         logger.debug(f"No insights data available for field '{field}'")
         return 0
@@ -905,22 +1010,17 @@ def calculate_metric_from_insights(insights: Dict, field: str) -> float:
                                 logger.debug(f"Calculated CPP from cost_per_result: {result}")
                                 return result
 
-        # Fallback: Calculate from spend and purchase actions if cost_per_action_type is not available
+        # Fallback: Calculate from spend and purchase count if cost_per_action_type is not available
         logger.debug(f"cost_per_action_type not available, falling back to calculation from spend and actions")
         spend = safe_float(insights.get("spend"), 0)
-        actions = insights.get("actions", [])
-        purchases = 0
-        if actions:
-            for action in actions:
-                if isinstance(action, dict) and action.get("action_type") == "purchase":
-                    purchases += safe_float(action.get("value"), 0)
+        purchases = calculate_metric_from_insights(insights, "purchase_count")
 
         if purchases > 0:
             result = spend / purchases
             logger.debug(f"Calculated CPP from spend/purchases: spend={spend}, purchases={purchases}, cpp={result}")
             return result
         else:
-            logger.debug(f"No purchases found. spend={spend}, actions={actions}")
+            logger.debug(f"No purchases found. spend={spend}, actions={insights.get('actions')}")
             return 0
     elif field == "spend":
         return safe_float(insights.get("spend"), 0)
@@ -932,6 +1032,35 @@ def calculate_metric_from_insights(insights: Dict, field: str) -> float:
                 if isinstance(action, dict) and action.get("action_type") in ["purchase", "complete_registration", "lead"]:
                     conversions += safe_float(action.get("value"), 0)
         return conversions
+    elif field == "purchase_count":
+        # Purchase count only (needed for Media Margin Volume / AOV calculations)
+        actions = insights.get("actions", [])
+        preferred = [
+            "omni_purchase",
+            "purchase",
+            "offsite_conversion.fb_pixel_purchase",
+            "onsite_web_purchase",
+            "onsite_web_app_purchase",
+            "web_in_store_purchase",
+            "web_app_in_store_purchase",
+        ]
+        purchases, _chosen, _by_type = _pick_canonical_purchase_action_value(actions, preferred)
+        return purchases
+    elif field == "purchase_value":
+        # Total purchase conversion value (revenue) for the time range.
+        # Use action_values as the source (purchase conversion value isn't requestable as a field in v21.0).
+        action_values = insights.get("action_values", [])
+        preferred = [
+            "omni_purchase",
+            "purchase",
+            "offsite_conversion.fb_pixel_purchase",
+            "onsite_web_purchase",
+            "onsite_web_app_purchase",
+            "web_in_store_purchase",
+            "web_app_in_store_purchase",
+        ]
+        value, _chosen, _by_type = _pick_canonical_purchase_action_value(action_values, preferred)
+        return value
     elif field == "ctr":
         ctr_value = insights.get("ctr")
         if ctr_value:
@@ -945,17 +1074,33 @@ def calculate_metric_from_insights(insights: Dict, field: str) -> float:
         return safe_float(insights.get("cpm"), 0)
     elif field == "roas":
         spend = safe_float(insights.get("spend"), 0)
-        actions = insights.get("actions", [])
-        revenue = 0
-        if actions:
-            for action in actions:
-                if isinstance(action, dict) and action.get("action_type") == "purchase":
-                    revenue += safe_float(action.get("value"), 0)
-        return revenue / spend if spend > 0 else 0
+        if spend == 0:
+            return 0
+
+        revenue = calculate_metric_from_insights(insights, "purchase_value")
+        if revenue <= 0:
+            return 0
+        return revenue / spend
+    elif field == "media_margin_volume":
+        """
+        Media Margin Volume (today):
+          (Avg Order Value - Cost Per Purchase) × Purchases
+
+        Using Meta-native definitions:
+          AOV = purchase_value / purchase_count
+          CPP = spend / purchase_count   (or cost_per_action_type purchase)
+
+        This simplifies to:
+          media_margin_volume = purchase_value - spend
+        (when value & spend refer to the same time range and attribution settings)
+        """
+        purchase_value = calculate_metric_from_insights(insights, "purchase_value")
+        spend = safe_float(insights.get("spend"), 0)
+        return purchase_value - spend
     elif field == "daily_budget":
         # This comes from the object data, not insights
         return None
-    return None
+    return 0
 
 
 def evaluate_condition(item: Dict, insights: Dict, condition: Dict, campaign_status_cache: Dict[str, str] = None) -> Tuple[bool, Dict]:
@@ -969,11 +1114,94 @@ def evaluate_condition(item: Dict, insights: Dict, condition: Dict, campaign_sta
     """
     field = condition.get("field")
     operator = condition.get("operator")
-    expected_value = condition.get("value")
+    expected_raw = condition.get("value")
+    expected_value = expected_raw
+
+    # Support structured expected values, e.g. { "base": "__daily_budget__", "mul": 1.2, "add": 0 }
+    # This lets the UI express comparisons like DailyBudget * 1.2 without adding many special tokens.
+    def _resolve_special_value_token(token: str) -> float:
+        if token == "__daily_budget__":
+            return float(item.get("daily_budget", 0)) / 100
+        if token == "__lifetime_budget__":
+            return float(item.get("lifetime_budget", 0)) / 100
+        if token == "__current_spend__":
+            return calculate_metric_from_insights(insights, "spend")
+        logger.warning(f"Unknown special value: {token}")
+        return 0
+
+    if isinstance(expected_value, dict) and "base" in expected_value:
+        base = expected_value.get("base")
+        mul = expected_value.get("mul", 1)
+        add = expected_value.get("add", 0)
+
+        try:
+            mul_f = float(mul) if mul is not None and mul != "" else 1.0
+        except (ValueError, TypeError):
+            mul_f = 1.0
+
+        try:
+            add_f = float(add) if add is not None and add != "" else 0.0
+        except (ValueError, TypeError):
+            add_f = 0.0
+
+        base_val = 0.0
+        if isinstance(base, str) and base.startswith("__") and base.endswith("__"):
+            base_val = _resolve_special_value_token(base)
+        else:
+            try:
+                base_val = float(base) if base is not None and base != "" else 0.0
+            except (ValueError, TypeError):
+                base_val = 0.0
+
+        expected_value = (base_val * mul_f) + add_f
+
+    # Handle special values (shortcodes like __daily_budget__)
+    if isinstance(expected_value, str) and expected_value.startswith("__") and expected_value.endswith("__"):
+        if expected_value == "__daily_budget__":
+            # Get daily budget from item (in cents, convert to dollars)
+            expected_value = float(item.get("daily_budget", 0)) / 100
+            logger.debug(f"Special value __daily_budget__ resolved to: ${expected_value:.2f}")
+        elif expected_value == "__lifetime_budget__":
+            # Get lifetime budget from item (in cents, convert to dollars)
+            expected_value = float(item.get("lifetime_budget", 0)) / 100
+            logger.debug(f"Special value __lifetime_budget__ resolved to: ${expected_value:.2f}")
+        elif expected_value == "__current_spend__":
+            # Get current spend from insights
+            expected_value = calculate_metric_from_insights(insights, "spend")
+            logger.debug(f"Special value __current_spend__ resolved to: ${expected_value:.2f}")
+        else:
+            # Unknown special value, treat as 0
+            logger.warning(f"Unknown special value: {expected_value}")
+            expected_value = 0
+
+    # Build a human-friendly expected expression (as configured)
+    def _format_expected_expression(raw_val) -> str:
+        try:
+            if isinstance(raw_val, dict) and "base" in raw_val:
+                base = raw_val.get("base")
+                mul = raw_val.get("mul", 1)
+                add = raw_val.get("add", 0)
+
+                parts = [str(base)]
+                if mul is not None and mul != "" and float(mul) != 1.0:
+                    parts.append(f"× {mul}")
+                if add is not None and add != "" and float(add) != 0.0:
+                    sign = "+" if float(add) >= 0 else "-"
+                    parts.append(f"{sign} {abs(float(add))}")
+                return " ".join(parts)
+
+            if isinstance(raw_val, str):
+                return raw_val
+
+            # numeric or other types
+            return str(raw_val)
+        except Exception:
+            return str(raw_val)
 
     evaluation = {
         "field": field,
         "operator": operator,
+        "expected_expression": _format_expected_expression(expected_raw),
         "expected_value": expected_value,
         "actual_value": None,
         "passed": False
@@ -1041,6 +1269,57 @@ def evaluate_condition(item: Dict, insights: Dict, condition: Dict, campaign_sta
     # Handle metrics from insights
     else:
         actual_value = calculate_metric_from_insights(insights, field)
+
+        # Attach detailed calculation for debugging Media Margin Volume
+        if field == "media_margin_volume":
+            spend = _safe_float_any(insights.get("spend"), 0.0)
+
+            # Canonical purchase types (avoid double counting)
+            actions = insights.get("actions", [])
+            action_values = insights.get("action_values", [])
+            preferred = [
+                "omni_purchase",
+                "purchase",
+                "offsite_conversion.fb_pixel_purchase",
+                "onsite_web_purchase",
+                "onsite_web_app_purchase",
+                "web_in_store_purchase",
+                "web_app_in_store_purchase",
+            ]
+            purchase_count, purchase_count_type, purchase_count_by_type = _pick_canonical_purchase_action_value(
+                actions, preferred
+            )
+            purchase_value, purchase_value_type, purchase_value_by_type = _pick_canonical_purchase_action_value(
+                action_values, preferred
+            )
+
+            purchase_value_source = "action_values" if purchase_value > 0 else "none"
+            cpp = calculate_metric_from_insights(insights, "cpp")
+            aov = (purchase_value / purchase_count) if purchase_count > 0 else None
+
+            # Match the simplified backend definition: MMV = purchase_value - spend
+            mmv = purchase_value - spend
+            actual_value = mmv
+
+            evaluation["calculation_details"] = {
+                "metric": "media_margin_volume",
+                "formula": "purchase_value - spend  (equivalent to (AOV - CPP) × Purchases when CPP=spend/purchases and AOV=value/purchases)",
+                "purchase_value": purchase_value,
+                "purchase_value_source": purchase_value_source,
+                "spend": spend,
+                "purchase_count": purchase_count,
+                "purchase_count_action_type_used": purchase_count_type,
+                "purchase_count_by_action_type": purchase_count_by_type,
+                "purchase_value_action_type_used": purchase_value_type,
+                "purchase_value_by_action_type": purchase_value_by_type,
+                "aov": aov,
+                "cpp": cpp,
+                "result": mmv,
+                "note": (
+                    "If purchase_value is 0, verify Insights returns action_values for the selected time range/attribution."
+                ),
+            }
+
         evaluation["actual_value"] = actual_value
 
         # Log for debugging when actual_value is 0 or None
@@ -1378,7 +1657,28 @@ def test_rule(db: Session, rule_id: int):
         # Step 1: Fetch data from Facebook API
         step_start_time = time.time()
         logger.info(f"[TIMING] Step 1 - Fetching {rule_level} data for rule {rule_id} (rule: {rule.name})")
-        all_data = fetch_facebook_data(account_id, access_token, rule_level, scope_filters=scope_filters)
+        # Optimization: if the rule has an explicit status condition like status = ACTIVE/PAUSED,
+        # apply it at API level via effective_status IN [...]
+        status_in = None
+        try:
+            status_values = []
+            for cond in rule_conditions:
+                if cond.get("field") == "status" and cond.get("operator") == "=":
+                    v = cond.get("value")
+                    if isinstance(v, str) and v:
+                        status_values.append(v)
+            if status_values:
+                status_in = sorted(set(status_values))
+        except Exception:
+            status_in = None
+
+        all_data = fetch_facebook_data(
+            account_id,
+            access_token,
+            rule_level,
+            scope_filters=scope_filters,
+            effective_status_in=status_in,
+        )
         step_elapsed = time.time() - step_start_time
         logger.info(f"[TIMING] Step 1 completed in {step_elapsed:.2f} seconds - Fetched {len(all_data)} total {rule_level} items from Facebook API")
         log_details["data_fetch"] = {
