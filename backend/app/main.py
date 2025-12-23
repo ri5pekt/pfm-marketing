@@ -24,7 +24,7 @@ if os.getenv("ENVIRONMENT") != "production":
     except Exception as e:
         print(f"Note: Could not create default ad account: {e}")
 
-app = FastAPI(title="PFM Marketing API", version="2.2.1")
+app = FastAPI(title="PFM Marketing API", version="3.0.0")
 
 # CORS configuration
 import json
@@ -57,12 +57,10 @@ if os.getenv("ENVIRONMENT") != "production":
     for origin in default_origins:
         if origin not in origins:
             origins.append(origin)
-    logger.info(f"Development mode: Added default origins. Final CORS origins: {origins}")
-
-# Fallback: if no origins configured, allow all in development (not recommended for production)
-if not origins and os.getenv("ENVIRONMENT") != "production":
+    # In development, allow all origins to handle dynamic IPs (e.g., Docker network IPs)
+    # This makes development easier when frontend runs on different network interfaces
     origins = ["*"]
-    logger.warning("No CORS origins found, allowing all origins in development mode")
+    logger.info(f"Development mode: Allowing all origins for easier local development")
 
 app.add_middleware(
     CORSMiddleware,

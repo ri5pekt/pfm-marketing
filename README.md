@@ -2,6 +2,21 @@
 
 Marketing department tool for managing Meta campaigns with automated rules, scheduled checks, and logging.
 
+## Version 3.0.0
+
+### Major Features
+- **Per-Condition Time Ranges**: Each condition can now specify its own time range for data fetching
+- **CPP Winning Days**: New condition field that counts days where Cost Per Purchase was below a threshold
+- **Amount of Active Ads**: New condition field to count active ads in campaigns/adsets
+- **Enhanced Logging**: Detailed breakdowns for CPP Winning Days calculations in execution logs
+- **Improved UI**: Refactored rule builder with better organization and user experience
+
+### Technical Improvements
+- Complete frontend refactoring: Split large components into smaller, maintainable modules
+- Backend modularization: Separated concerns into focused modules (API client, condition evaluator, action executor, etc.)
+- Better error handling and validation
+- Enhanced special value support with multipliers
+
 ## Tech Stack
 
 ### Backend
@@ -94,11 +109,23 @@ npm run dev
 ## Features
 
 ### Meta Campaigns Automation
-- Create automated rules for Meta campaigns
+- Create automated rules for Meta campaigns, adsets, and ads
+- **Per-condition time ranges**: Each condition can use different time windows
+- **CPP Winning Days**: Track performance consistency over time
+- **Amount of Active Ads**: Monitor ad activation status
 - Schedule rule checks using cron expressions
-- View execution logs
+- View detailed execution logs with condition breakdowns
 - Manual rule testing
-- Meta API integration (to be implemented)
+- Full Meta API integration with rate limiting
+- Support for all 12 standard automated rule types:
+  - Auto Optimizer (#AO)
+  - Late Attribution Reactivator (#AO)
+  - Winners Booster 10% & 20% (#PGS)
+  - Profitable Gate Scaling Increase/Decrease (#PGS)
+  - Sunday Overspend Decrease (#PGS)
+  - Stop-Loss Rule (#SLR)
+  - Stop-Loss Reactivator (#SLR)
+  - Stop-Loss Force Reactivator (#SLR)
 
 ### Authentication
 - JWT-based authentication
