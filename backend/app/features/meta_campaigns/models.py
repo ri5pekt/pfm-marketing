@@ -19,8 +19,24 @@ class AdAccount(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
-    # Relationship to rules
+    # Relationships
     rules = relationship("CampaignRule", back_populates="ad_account", cascade="all, delete-orphan")
+    rule_folders = relationship("RuleFolder", back_populates="ad_account", cascade="all, delete-orphan")
+
+
+class RuleFolder(Base):
+    __tablename__ = "rule_folders"
+
+    id = Column(Integer, primary_key=True, index=True)
+    ad_account_id = Column(Integer, ForeignKey("ad_accounts.id"), nullable=False, index=True)
+    name = Column(String, nullable=False)
+    position = Column(Integer, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    # Relationships
+    ad_account = relationship("AdAccount", back_populates="rule_folders")
+    rules = relationship("CampaignRule", back_populates="folder", order_by="CampaignRule.position")
 
 
 class CampaignRule(Base):
@@ -28,9 +44,11 @@ class CampaignRule(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     ad_account_id = Column(Integer, ForeignKey("ad_accounts.id"), nullable=False, index=True)
+    folder_id = Column(Integer, ForeignKey("rule_folders.id"), nullable=True, index=True)
     name = Column(String, nullable=False)
     description = Column(Text, nullable=True)
     enabled = Column(Boolean, default=True)
+    position = Column(Integer, default=0)
     schedule_cron = Column(String, nullable=True)  # Cron expression (nullable for manual-only rules)
     conditions = Column(JSON, nullable=False)  # Rule conditions
     actions = Column(JSON, nullable=False)  # Actions to execute
@@ -41,8 +59,9 @@ class CampaignRule(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
-    # Relationship to ad account
+    # Relationships
     ad_account = relationship("AdAccount", back_populates="rules")
+    folder = relationship("RuleFolder", back_populates="rules")
 
 
 class RuleLog(Base):

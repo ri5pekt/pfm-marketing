@@ -1,103 +1,104 @@
 <template>
-    <Dialog
-        :visible="modelValue"
-        @update:visible="$emit('update:modelValue', $event)"
-        :header="editingRule ? 'Edit Rule' : 'Create Rule'"
-        :modal="true"
-        :style="{ maxWidth: '900px', width: '90vw', maxHeight: '90vh' }"
-        class="rule-builder-dialog"
-    >
-        <TabView v-model:activeIndex="activeTabIndex">
-            <TabPanel header="Form Editor">
-                <div class="form-content">
-                    <RuleBasicInfo :modelValue="ruleForm" :errors="formErrors" @update:modelValue="updateRuleForm" />
-                    <RuleLevelAndScope
-                        :modelValue="ruleForm"
-                        :errors="formErrors"
-                        :availableScopeTypes="availableScopeTypes"
-                        @update:modelValue="updateRuleForm"
-                        @openAddScopeDialog="showAddScopeDialog = true"
-                        @clearScopeError="formErrors.scopeFilters = ''"
-                        @ruleLevelChanged="onRuleLevelChange"
-                    />
-                    <RuleTimeRange :modelValue="ruleForm" :errors="formErrors" @update:modelValue="updateRuleForm" />
-                    <RuleConditions :modelValue="ruleForm" @update:modelValue="updateRuleForm" />
-                    <RuleActions :modelValue="ruleForm" @update:modelValue="updateRuleForm" />
-                    <RuleSchedule
-                        :modelValue="ruleForm"
-                        :errors="scheduleFormErrors"
-                        @update:modelValue="updateRuleForm"
-                        @schedulePeriodChanged="onSchedulePeriodChange"
-                        @validateTime="validateTime"
-                    />
-                </div>
-            </TabPanel>
-            <TabPanel header="JSON Editor">
-                <RuleJsonEditor
-                    :modelValue="ruleJsonText"
-                    :jsonError="jsonError"
-                    :applyingJson="applyingJson"
-                    @update:modelValue="ruleJsonText = $event"
-                    @input="validateJsonText"
-                    @applyJson="handleApplyJson"
-                    @copyJson="copyJsonToClipboard"
-                />
-            </TabPanel>
-        </TabView>
+    <div class="rule-editor-view">
+        <div class="editor-header">
+            <Button icon="pi pi-arrow-left" text @click="goBack" class="back-button" />
+            <h1>{{ isEditMode ? "Edit Rule" : "Create Rule" }}</h1>
+        </div>
 
-        <AddScopeDialog
-            :modelValue="showAddScopeDialog"
-            :availableScopeTypes="availableScopeTypes"
-            @update:modelValue="showAddScopeDialog = $event"
-            @add="addScopeFilter"
-        />
+        <div class="editor-content">
+            <TabView v-model:activeIndex="activeTabIndex">
+                <TabPanel header="Form Editor">
+                    <div class="form-content">
+                        <RuleBasicInfo
+                            :modelValue="ruleForm"
+                            :errors="formErrors"
+                            @update:modelValue="updateRuleForm"
+                        />
+                        <RuleLevelAndScope
+                            :modelValue="ruleForm"
+                            :errors="formErrors"
+                            :availableScopeTypes="availableScopeTypes"
+                            @update:modelValue="updateRuleForm"
+                            @openAddScopeDialog="showAddScopeDialog = true"
+                            @clearScopeError="formErrors.scopeFilters = ''"
+                            @ruleLevelChanged="onRuleLevelChange"
+                        />
+                        <RuleTimeRange
+                            :modelValue="ruleForm"
+                            :errors="formErrors"
+                            @update:modelValue="updateRuleForm"
+                        />
+                        <RuleConditions :modelValue="ruleForm" @update:modelValue="updateRuleForm" />
+                        <RuleActions :modelValue="ruleForm" @update:modelValue="updateRuleForm" />
+                        <RuleSchedule
+                            :modelValue="ruleForm"
+                            :errors="scheduleFormErrors"
+                            @update:modelValue="updateRuleForm"
+                            @schedulePeriodChanged="onSchedulePeriodChange"
+                            @validateTime="validateTime"
+                        />
+                    </div>
+                </TabPanel>
+                <TabPanel header="JSON Editor">
+                    <RuleJsonEditor
+                        :modelValue="ruleJsonText"
+                        :jsonError="jsonError"
+                        :applyingJson="applyingJson"
+                        @update:modelValue="ruleJsonText = $event"
+                        @input="validateJsonText"
+                        @applyJson="handleApplyJson"
+                        @copyJson="copyJsonToClipboard"
+                    />
+                </TabPanel>
+            </TabView>
 
-        <template #footer>
-            <Button label="Cancel" severity="secondary" @click="handleCancel" />
-            <Button :label="editingRule ? 'Update' : 'Create'" @click="handleSave" :loading="saving" />
-        </template>
-    </Dialog>
+            <AddScopeDialog
+                :modelValue="showAddScopeDialog"
+                :availableScopeTypes="availableScopeTypes"
+                @update:modelValue="showAddScopeDialog = $event"
+                @add="addScopeFilter"
+            />
+        </div>
+
+        <div class="editor-footer">
+            <Button label="Cancel" severity="secondary" @click="goBack" />
+            <Button :label="isEditMode ? 'Update' : 'Create'" @click="handleSave" :loading="saving" />
+        </div>
+    </div>
 </template>
 
 <script setup>
-import { ref, computed, watch } from "vue";
+import { ref, computed, watch, onMounted } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { useToast } from "primevue/usetoast";
-import Dialog from "primevue/dialog";
 import TabView from "primevue/tabview";
 import TabPanel from "primevue/tabpanel";
 import Button from "primevue/button";
-import RuleBasicInfo from "../rule-builder/RuleBasicInfo.vue";
-import RuleLevelAndScope from "../rule-builder/RuleLevelAndScope.vue";
-import RuleTimeRange from "../rule-builder/RuleTimeRange.vue";
-import RuleConditions from "../rule-builder/RuleConditions.vue";
-import RuleActions from "../rule-builder/RuleActions.vue";
-import RuleSchedule from "../rule-builder/RuleSchedule.vue";
-import RuleJsonEditor from "../rule-builder/RuleJsonEditor.vue";
-import AddScopeDialog from "../rule-builder/AddScopeDialog.vue";
+import RuleBasicInfo from "@/components/meta-campaigns/rule-builder/RuleBasicInfo.vue";
+import RuleLevelAndScope from "@/components/meta-campaigns/rule-builder/RuleLevelAndScope.vue";
+import RuleTimeRange from "@/components/meta-campaigns/rule-builder/RuleTimeRange.vue";
+import RuleConditions from "@/components/meta-campaigns/rule-builder/RuleConditions.vue";
+import RuleActions from "@/components/meta-campaigns/rule-builder/RuleActions.vue";
+import RuleSchedule from "@/components/meta-campaigns/rule-builder/RuleSchedule.vue";
+import RuleJsonEditor from "@/components/meta-campaigns/rule-builder/RuleJsonEditor.vue";
+import AddScopeDialog from "@/components/meta-campaigns/rule-builder/AddScopeDialog.vue";
 import { buildCronExpression } from "@/utils/cronHelpers";
 import { scopeTypeOptions } from "@/utils/specialValues";
 import { useRuleForm } from "@/composables/useRuleForm";
 import { useRuleJsonConverter } from "@/composables/useRuleJsonConverter";
 import { useRuleSchedule } from "@/composables/useRuleSchedule";
+import { getRule, createRule, updateRule } from "@/api/metaCampaignsApi";
 
-const props = defineProps({
-    modelValue: {
-        type: Boolean,
-        default: false,
-    },
-    editingRule: {
-        type: Object,
-        default: null,
-    },
-    selectedAccountId: {
-        type: [String, Number],
-        default: null,
-    },
-});
-
-const emit = defineEmits(["update:modelValue", "save", "cancel"]);
-
+const route = useRoute();
+const router = useRouter();
 const toast = useToast();
+
+// Determine mode from route
+const isEditMode = computed(() => route.name === "rule-edit");
+const ruleId = computed(() => route.params.id);
+
+// Get selected account ID from route query or localStorage
+const selectedAccountId = ref(null);
 
 // Use composables
 const { ruleForm, formErrors, scheduleFormErrors, resetForm, updateRuleForm, initializeFormFromRule } = useRuleForm();
@@ -118,6 +119,7 @@ const { onSchedulePeriodChange, validateTime, validateSchedule } = useRuleSchedu
 const showAddScopeDialog = ref(false);
 const activeTabIndex = ref(0);
 const saving = ref(false);
+const loading = ref(false);
 
 // Computed: Available scope types
 const availableScopeTypes = computed(() => {
@@ -125,30 +127,50 @@ const availableScopeTypes = computed(() => {
     let filteredOptions = scopeTypeOptions;
     if (ruleForm.value.ruleLevel === "campaign") {
         filteredOptions = scopeTypeOptions.filter(
-            (opt) => opt.value !== "campaign_name_contains" && opt.value !== "campaign_ids"
+            (opt) => opt.value !== "campaign_name_contains" && opt.value !== "campaign_ids",
         );
     }
     return filteredOptions.filter((opt) => !addedTypes.includes(opt.value));
 });
 
-// Initialize form when dialog opens or editingRule changes
-watch(
-    () => [props.modelValue, props.editingRule],
-    ([isOpen, rule]) => {
-        if (isOpen) {
-            if (rule) {
-                initializeFormFromRule(rule);
-            } else {
-                resetForm();
-            }
-            activeTabIndex.value = 0;
-            ruleJsonText.value = "";
-            jsonError.value = "";
+// Load rule data if editing
+onMounted(async () => {
+    // Get account ID from route query or localStorage
+    selectedAccountId.value = route.query.accountId || localStorage.getItem("pfm_selected_account_id");
+
+    if (!selectedAccountId.value) {
+        toast.add({
+            severity: "warn",
+            summary: "Warning",
+            detail: "No ad account selected",
+            life: 3000,
+        });
+        goBack();
+        return;
+    }
+
+    if (isEditMode.value && ruleId.value) {
+        loading.value = true;
+        try {
+            const rule = await getRule(ruleId.value);
+            initializeFormFromRule(rule);
             updateJSONFromForm();
+        } catch (error) {
+            toast.add({
+                severity: "error",
+                summary: "Error",
+                detail: error.message || "Failed to load rule",
+                life: 5000,
+            });
+            goBack();
+        } finally {
+            loading.value = false;
         }
-    },
-    { immediate: true }
-);
+    } else {
+        resetForm();
+        updateJSONFromForm();
+    }
+});
 
 // Watch form changes and update JSON
 watch(
@@ -158,7 +180,7 @@ watch(
             updateJSONFromForm();
         }
     },
-    { deep: true }
+    { deep: true },
 );
 
 function onRuleLevelChange() {
@@ -209,9 +231,8 @@ async function handleApplyJson() {
     activeTabIndex.value = 0;
 }
 
-function handleCancel() {
-    emit("cancel");
-    emit("update:modelValue", false);
+function goBack() {
+    router.push({ name: "meta-campaigns" });
 }
 
 function validateForm() {
@@ -286,7 +307,7 @@ function validateForm() {
         });
         if (invalidScopes.length > 0) {
             const nameContainsIssue = invalidScopes.find(
-                (s) => s.type === "name_contains" || s.type === "campaign_name_contains"
+                (s) => s.type === "name_contains" || s.type === "campaign_name_contains",
             );
             if (nameContainsIssue) {
                 formErrors.value.scopeFilters = `The "Name contains" filter requires at least one keyword. Please type a keyword and press Enter to add it.`;
@@ -347,7 +368,7 @@ function validateForm() {
 }
 
 async function handleSave() {
-    if (!props.selectedAccountId) {
+    if (!selectedAccountId.value) {
         toast.add({
             severity: "warn",
             summary: "Warning",
@@ -395,17 +416,32 @@ async function handleSave() {
     saving.value = true;
     try {
         const ruleData = ruleFormToJSON();
-        ruleData.ad_account_id = props.selectedAccountId;
-        if (props.editingRule) {
-            ruleData.id = props.editingRule.id;
+        ruleData.ad_account_id = selectedAccountId.value;
+
+        if (isEditMode.value) {
+            await updateRule(ruleId.value, ruleData);
+            toast.add({
+                severity: "success",
+                summary: "Success",
+                detail: "Rule updated successfully",
+                life: 3000,
+            });
+        } else {
+            await createRule(ruleData);
+            toast.add({
+                severity: "success",
+                summary: "Success",
+                detail: "Rule created successfully",
+                life: 3000,
+            });
         }
-        emit("save", ruleData);
-        emit("update:modelValue", false);
+
+        goBack();
     } catch (error) {
         toast.add({
             severity: "error",
             summary: "Error",
-            detail: error.message || "Failed to save rule",
+            detail: error.message || `Failed to ${isEditMode.value ? "update" : "create"} rule`,
             life: 5000,
         });
     } finally {
@@ -415,17 +451,68 @@ async function handleSave() {
 </script>
 
 <style scoped>
-.rule-builder-dialog :deep(.p-dialog-content) {
-    max-height: calc(90vh - 150px);
-    overflow-y: auto;
-    overflow-x: hidden;
+.rule-editor-view {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    background-color: var(--surface-ground);
 }
 
-.rule-builder-dialog :deep(.p-dialog-footer) {
-    padding-top: 1rem;
+.editor-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.5rem 2rem;
+    background-color: var(--surface-card);
+    border-bottom: 1px solid var(--surface-border);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.editor-header h1 {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 600;
+}
+
+.back-button {
+    font-size: 1.25rem;
+}
+
+.editor-content {
+    flex: 1;
+    padding: 2rem;
+    max-width: 1200px;
+    width: 100%;
+    margin: 0 auto;
 }
 
 .form-content {
     padding: 0.5rem 0;
+}
+
+.editor-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 1rem;
+    padding: 1.5rem 2rem;
+    background-color: var(--surface-card);
+    border-top: 1px solid var(--surface-border);
+    position: sticky;
+    bottom: 0;
+    z-index: 100;
+}
+
+/* Adjust for mobile */
+@media (max-width: 768px) {
+    .editor-content {
+        padding: 1rem;
+    }
+
+    .editor-header,
+    .editor-footer {
+        padding: 1rem;
+    }
 }
 </style>

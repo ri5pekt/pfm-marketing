@@ -23,8 +23,8 @@
             <div class="json-actions-info">
                 <small v-if="jsonError" class="p-error">{{ jsonError }}</small>
                 <small v-else class="p-text-secondary">
-                    Edit the JSON directly or use the "Apply JSON" button to update the form. JSON
-                    updates automatically when you change the form.
+                    Edit the JSON directly or use the "Apply JSON" button to update the form. JSON updates automatically
+                    when you change the form.
                 </small>
             </div>
             <div class="json-actions-buttons">
@@ -35,13 +35,7 @@
                     :disabled="!modelValue || !!jsonError"
                     :loading="applyingJson"
                 />
-                <Button
-                    label="Copy JSON"
-                    icon="pi pi-copy"
-                    severity="secondary"
-                    outlined
-                    @click="$emit('copyJson')"
-                />
+                <Button label="Copy JSON" icon="pi pi-copy" severity="secondary" outlined @click="$emit('copyJson')" />
             </div>
         </div>
     </div>
@@ -75,8 +69,7 @@ const lineNumbersRef = ref(null);
 const jsonLineCount = computed(() => {
     if (!props.modelValue) return 20;
     const lines = props.modelValue.split("\n").length;
-    // Add 1 to match textarea's actual line count (textarea shows one more line)
-    return Math.max(lines + 1, 20); // Minimum 20 lines for empty textarea
+    return Math.max(lines, 20); // Minimum 20 lines for empty textarea
 });
 </script>
 
@@ -111,7 +104,7 @@ const jsonLineCount = computed(() => {
 .json-line-numbers {
     background-color: #f8f9fa;
     color: #6c757d;
-    padding-top: 0.65rem;
+    padding-top: 0.75rem;
     padding-bottom: 0.75rem;
     padding-left: 0.5rem;
     padding-right: 0.5rem;
@@ -119,14 +112,14 @@ const jsonLineCount = computed(() => {
     user-select: none;
     font-family: "Courier New", Courier, monospace;
     font-size: 0.875rem;
-    line-height: 1.5;
+    line-height: 1.5rem;
     min-width: 3rem;
     border-right: 1px solid #dee2e6;
     flex-shrink: 0;
 }
 
 .json-line-number {
-    height: 1.49em;
+    height: 1.5rem;
     padding-right: 0.5rem;
     display: flex;
     align-items: center;
@@ -136,7 +129,7 @@ const jsonLineCount = computed(() => {
 .json-textarea {
     font-family: "Courier New", Courier, monospace;
     font-size: 0.875rem;
-    line-height: 1.5;
+    line-height: 1.5rem;
     flex: 1;
     border: none;
     resize: none;
@@ -149,7 +142,7 @@ const jsonLineCount = computed(() => {
     padding-left: 0.75rem;
     padding-right: 0.75rem;
     resize: none;
-    line-height: 1.5;
+    line-height: 1.5rem;
 }
 
 .json-editor-scroll-container.p-invalid {
@@ -190,4 +183,3 @@ const jsonLineCount = computed(() => {
     overflow-x: hidden;
 }
 </style>
-

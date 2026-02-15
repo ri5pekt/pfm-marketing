@@ -125,3 +125,75 @@ def delete_rule_log(
         raise HTTPException(status_code=404, detail="Log entry not found")
     return {"message": "Log entry deleted successfully"}
 
+
+# ----------------------------
+# Folder endpoints
+# ----------------------------
+@router.get("/folders", response_model=list[schemas.Folder])
+def get_folders(
+    ad_account_id: int = Query(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get all folders for an ad account"""
+    return service.get_folders_by_ad_account(db, ad_account_id)
+
+
+@router.post("/folders", response_model=schemas.Folder)
+def create_folder(
+    folder_data: schemas.FolderCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Create a new folder"""
+    return service.create_folder(db, folder_data)
+
+
+@router.put("/folders/{folder_id}", response_model=schemas.Folder)
+def update_folder(
+    folder_id: int,
+    folder_data: schemas.FolderUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Update a folder (rename or reposition)"""
+    folder = service.update_folder(db, folder_id, folder_data)
+    if not folder:
+        raise HTTPException(status_code=404, detail="Folder not found")
+    return folder
+
+
+@router.delete("/folders/{folder_id}")
+def delete_folder(
+    folder_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Delete a folder (rules move to root level)"""
+    success = service.delete_folder(db, folder_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Folder not found")
+    return {"message": "Folder deleted successfully"}
+
+
+@router.post("/folders/reorder")
+def reorder_folders(
+    request: schemas.FolderReorderRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Batch reorder folders"""
+    service.reorder_folders(db, request.ad_account_id, request.items)
+    return {"message": "Folders reordered successfully"}
+
+
+@router.post("/rules/reorder")
+def reorder_rules(
+    request: schemas.RuleReorderRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Batch reorder rules and update folder assignments"""
+    service.reorder_rules(db, request.ad_account_id, request.items)
+    return {"message": "Rules reordered successfully"}
+

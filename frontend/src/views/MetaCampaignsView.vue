@@ -63,14 +63,19 @@
             v-if="selectedAccount"
             :selectedAccount="selectedAccount"
             :rules="rules"
-            :loading="loading"
+            :folders="folders"
+            :loading="loading || loadingFolders"
             :testingRuleId="testingRuleId"
-            @create-rule="openCreateDialog"
             @test-rule="handleTestRule"
             @cancel-test="cancelTestRule"
             @view-logs="viewLogs"
-            @edit-rule="editRule"
             @delete-rule="confirmDelete"
+            @create-folder="handleCreateFolder"
+            @rename-folder="handleRenameFolder"
+            @delete-folder="handleDeleteFolder"
+            @reorder-folders="handleReorderFolders"
+            @reorder-rules="handleReorderRules"
+            @reorder-unified="handleReorderUnified"
         />
 
         <!-- Ad Account Dialog -->
@@ -85,15 +90,6 @@
             @save="handleSaveAdAccount"
             @close="closeAccountDialog"
             @test-connection="testConnection"
-        />
-
-        <!-- Rule Builder Dialog -->
-        <RuleBuilderDialog
-            v-model="showCreateDialog"
-            :editingRule="editingRule"
-            :selectedAccountId="selectedAccount?.id"
-            @save="handleSaveRuleData"
-            @cancel="closeCreateDialog"
         />
 
         <!-- Logs Dialog -->
@@ -126,7 +122,6 @@ import AdAccountsSection from "@/components/meta-campaigns/AdAccountsSection.vue
 import CampaignsNavigation from "@/components/meta-campaigns/CampaignsNavigation.vue";
 import RulesSection from "@/components/meta-campaigns/RulesSection.vue";
 import AdAccountDialog from "@/components/meta-campaigns/dialogs/AdAccountDialog.vue";
-import RuleBuilderDialog from "@/components/meta-campaigns/dialogs/RuleBuilderDialog.vue";
 import LogsDialog from "@/components/meta-campaigns/dialogs/LogsDialog.vue";
 import LogDetailsDialog from "@/components/meta-campaigns/dialogs/LogDetailsDialog.vue";
 
@@ -134,6 +129,7 @@ import LogDetailsDialog from "@/components/meta-campaigns/dialogs/LogDetailsDial
 import { useAdAccounts } from "@/composables/useAdAccounts";
 import { useCampaigns } from "@/composables/useCampaigns";
 import { useRules } from "@/composables/useRules";
+import { useFolders } from "@/composables/useFolders";
 
 const toast = useToast();
 
@@ -189,19 +185,15 @@ const {
     allRules,
     loading,
     loadingLogs,
-    saving,
     testingRuleId,
     showLogsDialog,
     showLogDetailsDialog,
-    showCreateDialog,
-    editingRule,
     logs,
     currentRuleForLogs,
     selectedLogDetails,
     loadAllRules,
     loadRules,
     getRulesCountForAccount,
-    saveRule,
     confirmDelete,
     testRule,
     cancelTestRule,
@@ -209,11 +201,18 @@ const {
     confirmDeleteLog,
     showLogDetails,
     downloadLogDetails,
-    openCreateDialog,
-    editRule,
-    closeCreateDialog,
-    handleSaveRule,
 } = useRules();
+
+const {
+    folders,
+    loading: loadingFolders,
+    loadFolders,
+    createFolder,
+    renameFolder,
+    deleteFolder,
+    saveFolderPositions,
+    saveRulePositions,
+} = useFolders();
 
 // Polling interval
 let rulesPollingInterval = null;
@@ -223,9 +222,65 @@ async function onAccountSelect(event) {
     selectAccount(event.data);
     // Reset campaigns when account changes
     resetCampaigns();
-    // Load rules for the selected account
+    // Load rules and folders for the selected account
     if (event.data && event.data.id) {
         await loadRules(event.data.id);
+        await loadFolders(event.data.id);
+    }
+}
+
+async function handleCreateFolder(name) {
+    if (selectedAccount.value) {
+        await createFolder(name, selectedAccount.value.id);
+        await loadFolders(selectedAccount.value.id);
+    }
+}
+
+async function handleRenameFolder(folderId, newName) {
+    await renameFolder(folderId, newName);
+    if (selectedAccount.value) {
+        await loadFolders(selectedAccount.value.id);
+    }
+}
+
+async function handleDeleteFolder(folderId) {
+    await deleteFolder(folderId);
+    if (selectedAccount.value) {
+        await loadFolders(selectedAccount.value.id);
+        await loadRules(selectedAccount.value.id);
+    }
+}
+
+async function handleReorderFolders(items) {
+    if (selectedAccount.value) {
+        await saveFolderPositions(selectedAccount.value.id, items);
+    }
+}
+
+async function handleReorderRules(items) {
+    if (selectedAccount.value) {
+        await saveRulePositions(selectedAccount.value.id, items);
+    }
+}
+
+async function handleReorderUnified(items) {
+    if (selectedAccount.value) {
+        // Separate folders and rules
+        const folderItems = items
+            .filter((item) => item.type === "folder")
+            .map((item) => ({ id: item.id, position: item.position }));
+
+        const ruleItems = items
+            .filter((item) => item.type === "rule")
+            .map((item) => ({ id: item.id, position: item.position, folder_id: null }));
+
+        // Save both
+        if (folderItems.length > 0) {
+            await saveFolderPositions(selectedAccount.value.id, folderItems);
+        }
+        if (ruleItems.length > 0) {
+            await saveRulePositions(selectedAccount.value.id, ruleItems);
+        }
     }
 }
 
@@ -234,7 +289,6 @@ function handleLoadCampaigns() {
         loadCampaigns(selectedAccount.value.id);
     }
 }
-
 
 function handleCampaignClick(campaign) {
     if (selectedAccount.value) {
@@ -300,6 +354,7 @@ onMounted(async () => {
         const defaultAccount = await loadDefaultAccount();
         if (defaultAccount) {
             await loadRules(defaultAccount.id);
+            await loadFolders(defaultAccount.id);
         }
     } catch (error) {
         // No default account yet - this is expected
@@ -310,6 +365,7 @@ onMounted(async () => {
     rulesPollingInterval = setInterval(() => {
         if (selectedAccount.value) {
             loadRules(selectedAccount.value.id, true);
+            loadFolders(selectedAccount.value.id, true);
         }
         loadAllRules();
     }, 5000);
@@ -328,11 +384,13 @@ watch(
     async (newAccount, oldAccount) => {
         if (newAccount && newAccount.id) {
             await loadRules(newAccount.id);
+            await loadFolders(newAccount.id);
         } else {
             rules.value = [];
+            folders.value = [];
         }
     },
-    { immediate: false }
+    { immediate: false },
 );
 </script>
 

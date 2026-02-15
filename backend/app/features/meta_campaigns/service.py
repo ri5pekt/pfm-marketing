@@ -18,6 +18,91 @@ logger = logging.getLogger(__name__)
 
 
 # ----------------------------
+# Folder CRUD Operations
+# ----------------------------
+def get_folders_by_ad_account(db: Session, ad_account_id: int):
+    """Get all folders for an ad account, ordered by position"""
+    return db.query(models.RuleFolder).filter(
+        models.RuleFolder.ad_account_id == ad_account_id
+    ).order_by(models.RuleFolder.position).all()
+
+
+def create_folder(db: Session, folder_data: schemas.FolderCreate):
+    """Create a new folder with auto-assigned position"""
+    # Get the max position for this ad account
+    max_position = db.query(models.RuleFolder).filter(
+        models.RuleFolder.ad_account_id == folder_data.ad_account_id
+    ).count()
+
+    folder_dict = folder_data.model_dump()
+    folder_dict['position'] = max_position
+
+    folder = models.RuleFolder(**folder_dict)
+    db.add(folder)
+    db.commit()
+    db.refresh(folder)
+    return folder
+
+
+def update_folder(db: Session, folder_id: int, folder_data: schemas.FolderUpdate):
+    """Update a folder (rename or reposition)"""
+    folder = db.query(models.RuleFolder).filter(models.RuleFolder.id == folder_id).first()
+    if not folder:
+        return None
+
+    update_data = folder_data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(folder, field, value)
+
+    db.commit()
+    db.refresh(folder)
+    return folder
+
+
+def delete_folder(db: Session, folder_id: int):
+    """Delete a folder and move its rules to root level"""
+    folder = db.query(models.RuleFolder).filter(models.RuleFolder.id == folder_id).first()
+    if not folder:
+        return False
+
+    # Move all rules in this folder to root level (folder_id = null)
+    db.query(models.CampaignRule).filter(
+        models.CampaignRule.folder_id == folder_id
+    ).update({"folder_id": None})
+
+    db.delete(folder)
+    db.commit()
+    return True
+
+
+def reorder_folders(db: Session, ad_account_id: int, reorder_items: List[schemas.FolderReorderItem]):
+    """Batch update folder positions"""
+    for item in reorder_items:
+        db.query(models.RuleFolder).filter(
+            models.RuleFolder.id == item.id,
+            models.RuleFolder.ad_account_id == ad_account_id
+        ).update({"position": item.position})
+
+    db.commit()
+    return True
+
+
+def reorder_rules(db: Session, ad_account_id: int, reorder_items: List[schemas.RuleReorderItem]):
+    """Batch update rule positions and folder assignments"""
+    for item in reorder_items:
+        db.query(models.CampaignRule).filter(
+            models.CampaignRule.id == item.id,
+            models.CampaignRule.ad_account_id == ad_account_id
+        ).update({
+            "folder_id": item.folder_id,
+            "position": item.position
+        })
+
+    db.commit()
+    return True
+
+
+# ----------------------------
 # Rule CRUD Operations
 # ----------------------------
 def get_all_rules(db: Session):
@@ -27,6 +112,9 @@ def get_all_rules(db: Session):
 def get_rules_by_ad_account(db: Session, ad_account_id: int):
     return db.query(models.CampaignRule).filter(
         models.CampaignRule.ad_account_id == ad_account_id
+    ).order_by(
+        models.CampaignRule.folder_id.nullslast(),
+        models.CampaignRule.position
     ).all()
 
 
