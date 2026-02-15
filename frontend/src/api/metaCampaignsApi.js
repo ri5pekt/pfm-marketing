@@ -55,9 +55,7 @@ export async function reorderFolders(adAccountId, items) {
         ad_account_id: adAccountId,
         items,
     });
-}
-
-export async function reorderRules(adAccountId, items) {
+}export async function reorderRules(adAccountId, items) {
     return await post("/app/meta-campaigns/rules/reorder", {
         ad_account_id: adAccountId,
         items,
