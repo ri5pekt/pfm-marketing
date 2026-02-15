@@ -4,31 +4,31 @@
 
 // Field type categories
 export const FIELD_TYPES = {
-    STATUS: 'status',
-    NUMERIC: 'numeric',
-    SPECIAL: 'special',
-    TEXT: 'text',
+    STATUS: "status",
+    NUMERIC: "numeric",
+    SPECIAL: "special",
+    TEXT: "text",
 };
 
 // Operator sets
 export const OPERATORS = {
     COMPARISON: [
-        { label: '>', value: 'gt' },
-        { label: '>=', value: 'gte' },
-        { label: '<', value: 'lt' },
-        { label: '<=', value: 'lte' },
-        { label: '=', value: 'eq' },
-        { label: '!=', value: 'neq' },
+        { label: ">", value: "gt" },
+        { label: ">=", value: "gte" },
+        { label: "<", value: "lt" },
+        { label: "<=", value: "lte" },
+        { label: "=", value: "eq" },
+        { label: "!=", value: "neq" },
     ],
     EQUALITY: [
-        { label: '=', value: 'eq' },
-        { label: '!=', value: 'neq' },
+        { label: "=", value: "eq" },
+        { label: "!=", value: "neq" },
     ],
     STRING: [
-        { label: 'Contains', value: 'contains' },
-        { label: 'Does not contain', value: 'not_contains' },
-        { label: '=', value: 'eq' },
-        { label: '!=', value: 'neq' },
+        { label: "Contains", value: "contains" },
+        { label: "Does not contain", value: "not_contains" },
+        { label: "=", value: "eq" },
+        { label: "!=", value: "neq" },
     ],
 };
 
@@ -96,11 +96,13 @@ export const FIELD_CONFIG = {
  * Get field configuration
  */
 export function getFieldConfig(fieldName) {
-    return FIELD_CONFIG[fieldName] || {
-        type: FIELD_TYPES.TEXT,
-        operators: OPERATORS.STRING,
-        supportsSpecialValues: false,
-    };
+    return (
+        FIELD_CONFIG[fieldName] || {
+            type: FIELD_TYPES.TEXT,
+            operators: OPERATORS.STRING,
+            supportsSpecialValues: false,
+        }
+    );
 }
 
 /**
@@ -148,21 +150,21 @@ export function fieldRequiresThreshold(fieldName) {
  */
 export function getValueInputType(fieldName, value) {
     if (isFieldStatus(fieldName)) {
-        return 'status';
+        return "status";
     }
-    
+
     if (fieldRequiresThreshold(fieldName)) {
-        return 'cpp-winning-days';
+        return "cpp-winning-days";
     }
-    
+
     // Check if value is a special value (object with base and mul)
-    if (typeof value === 'object' && value !== null && 'base' in value) {
-        return 'special';
+    if (typeof value === "object" && value !== null && "base" in value) {
+        return "special";
     }
-    
+
     if (isFieldNumeric(fieldName)) {
-        return 'numeric';
+        return "numeric";
     }
-    
-    return 'text';
+
+    return "text";
 }

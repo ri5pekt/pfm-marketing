@@ -11,7 +11,7 @@
 </template>
 
 <script setup>
-import InputNumber from 'primevue/inputnumber';
+import InputNumber from "primevue/inputnumber";
 
 defineProps({
     value: {
@@ -20,7 +20,7 @@ defineProps({
     },
 });
 
-defineEmits(['update:value']);
+defineEmits(["update:value"]);
 </script>
 
 <style scoped>

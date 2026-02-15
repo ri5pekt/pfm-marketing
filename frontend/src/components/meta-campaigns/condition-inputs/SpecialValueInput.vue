@@ -26,10 +26,10 @@
 </template>
 
 <script setup>
-import { computed } from 'vue';
-import InputText from 'primevue/inputtext';
-import InputNumber from 'primevue/inputnumber';
-import { getSpecialBase, getSpecialMul, getSpecialValueLabel } from '@/utils/specialValues';
+import { computed } from "vue";
+import InputText from "primevue/inputtext";
+import InputNumber from "primevue/inputnumber";
+import { getSpecialBase, getSpecialMul, getSpecialValueLabel } from "@/utils/specialValues";
 
 const props = defineProps({
     value: {
@@ -38,7 +38,7 @@ const props = defineProps({
     },
 });
 
-const emit = defineEmits(['update:value']);
+const emit = defineEmits(["update:value"]);
 
 const baseValue = computed(() => {
     return getSpecialBase(props.value);
@@ -53,31 +53,31 @@ const valueLabel = computed(() => {
 });
 
 function updateBase(base) {
-    const baseStr = base === null || base === undefined ? '' : String(base);
-    
+    const baseStr = base === null || base === undefined ? "" : String(base);
+
     // Normalize to object format
-    if (typeof props.value === 'object' && props.value) {
-        emit('update:value', {
+    if (typeof props.value === "object" && props.value) {
+        emit("update:value", {
             ...props.value,
             base: baseStr,
             mul: props.value.mul !== undefined ? props.value.mul : 1,
         });
     } else {
-        emit('update:value', { base: baseStr, mul: 1 });
+        emit("update:value", { base: baseStr, mul: 1 });
     }
 }
 
 function updateMultiplier(mul) {
-    const safeMul = mul === null || mul === undefined || mul === '' ? 1 : Number(mul);
-    
+    const safeMul = mul === null || mul === undefined || mul === "" ? 1 : Number(mul);
+
     // Normalize to object format
-    if (typeof props.value === 'object' && props.value) {
-        emit('update:value', {
+    if (typeof props.value === "object" && props.value) {
+        emit("update:value", {
             ...props.value,
             mul: safeMul,
         });
     } else {
-        emit('update:value', { base: props.value || '', mul: safeMul });
+        emit("update:value", { base: props.value || "", mul: safeMul });
     }
 }
 </script>
@@ -95,7 +95,7 @@ function updateMultiplier(mul) {
 }
 
 .special-value {
-    font-family: 'Courier New', monospace;
+    font-family: "Courier New", monospace;
     font-size: 0.875rem;
 }
 

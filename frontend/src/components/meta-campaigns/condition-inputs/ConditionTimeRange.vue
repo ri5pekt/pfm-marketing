@@ -7,9 +7,7 @@
                     @update:modelValue="$emit('toggle-custom', $event)"
                     :inputId="`useCustomTimeRange-${conditionIndex}`"
                 />
-                <label :for="`useCustomTimeRange-${conditionIndex}`" class="field-label">
-                    Use custom time range
-                </label>
+                <label :for="`useCustomTimeRange-${conditionIndex}`" class="field-label"> Use custom time range </label>
             </div>
             <small v-if="!useCustomTimeRange" class="p-text-secondary">
                 Using global time range: {{ globalTimeRangeLabel }}
@@ -52,33 +50,24 @@
                         @update:modelValue="$emit('update-time-range', 'exclude_today', $event)"
                         :inputId="`conditionExcludeToday-${conditionIndex}`"
                         :disabled="
-                            timeRange.unit === 'minutes' ||
-                            timeRange.unit === 'hours' ||
-                            timeRange.unit === 'today'
+                            timeRange.unit === 'minutes' || timeRange.unit === 'hours' || timeRange.unit === 'today'
                         "
                     />
-                    <label :for="`conditionExcludeToday-${conditionIndex}`" class="field-label">
-                        Exclude today
-                    </label>
+                    <label :for="`conditionExcludeToday-${conditionIndex}`" class="field-label"> Exclude today </label>
                 </div>
-                <small
-                    class="p-text-secondary"
-                    v-if="timeRange.unit === 'minutes' || timeRange.unit === 'hours'"
-                >
+                <small class="p-text-secondary" v-if="timeRange.unit === 'minutes' || timeRange.unit === 'hours'">
                     (No effect for minutes or hours)
                 </small>
-                <small class="p-text-secondary" v-if="timeRange.unit === 'today'">
-                    (Disabled for today only)
-                </small>
+                <small class="p-text-secondary" v-if="timeRange.unit === 'today'"> (Disabled for today only) </small>
             </div>
         </div>
     </div>
 </template>
 
 <script setup>
-import Select from 'primevue/select';
-import InputNumber from 'primevue/inputnumber';
-import InputSwitch from 'primevue/inputswitch';
+import Select from "primevue/select";
+import InputNumber from "primevue/inputnumber";
+import InputSwitch from "primevue/inputswitch";
 
 defineProps({
     conditionIndex: {
@@ -99,11 +88,11 @@ defineProps({
     },
     globalTimeRangeLabel: {
         type: String,
-        default: 'Not set',
+        default: "Not set",
     },
 });
 
-defineEmits(['toggle-custom', 'update-time-range']);
+defineEmits(["toggle-custom", "update-time-range"]);
 </script>
 
 <style scoped>

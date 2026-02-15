@@ -33,9 +33,9 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
-import Button from 'primevue/button';
-import OverlayPanel from 'primevue/overlaypanel';
+import { ref } from "vue";
+import Button from "primevue/button";
+import OverlayPanel from "primevue/overlaypanel";
 
 defineProps({
     field: {
@@ -48,7 +48,7 @@ defineProps({
     },
 });
 
-const emit = defineEmits(['select']);
+const emit = defineEmits(["select"]);
 
 const menuRef = ref(null);
 
@@ -59,7 +59,7 @@ function toggleMenu(event) {
 }
 
 function selectValue(value) {
-    emit('select', value);
+    emit("select", value);
     if (menuRef.value) {
         menuRef.value.hide();
     }
@@ -110,7 +110,7 @@ function selectValue(value) {
 }
 
 .special-value-item-code {
-    font-family: 'Courier New', monospace;
+    font-family: "Courier New", monospace;
     font-size: 0.8125rem;
     color: var(--primary-color);
     background: var(--primary-50);

@@ -31,7 +31,7 @@
 </template>
 
 <script setup>
-import InputNumber from 'primevue/inputnumber';
+import InputNumber from "primevue/inputnumber";
 
 defineProps({
     value: {
@@ -44,7 +44,7 @@ defineProps({
     },
 });
 
-defineEmits(['update:value', 'update:threshold']);
+defineEmits(["update:value", "update:threshold"]);
 </script>
 
 <style scoped>

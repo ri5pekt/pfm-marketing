@@ -17,7 +17,7 @@
 </template>
 
 <script setup>
-import Select from 'primevue/select';
+import Select from "primevue/select";
 
 defineProps({
     field: {
@@ -30,7 +30,7 @@ defineProps({
     },
 });
 
-defineEmits(['update:field']);
+defineEmits(["update:field"]);
 </script>
 
 <style scoped>

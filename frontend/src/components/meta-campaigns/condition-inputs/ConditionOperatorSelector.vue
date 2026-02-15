@@ -17,7 +17,7 @@
 </template>
 
 <script setup>
-import Select from 'primevue/select';
+import Select from "primevue/select";
 
 defineProps({
     operator: {
@@ -30,7 +30,7 @@ defineProps({
     },
 });
 
-defineEmits(['update:operator']);
+defineEmits(["update:operator"]);
 </script>
 
 <style scoped>

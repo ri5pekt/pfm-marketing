@@ -8,7 +8,7 @@
 </template>
 
 <script setup>
-import InputText from 'primevue/inputtext';
+import InputText from "primevue/inputtext";
 
 defineProps({
     value: {
@@ -17,11 +17,11 @@ defineProps({
     },
     placeholder: {
         type: String,
-        default: 'Enter value',
+        default: "Enter value",
     },
 });
 
-defineEmits(['update:value']);
+defineEmits(["update:value"]);
 </script>
 
 <style scoped>

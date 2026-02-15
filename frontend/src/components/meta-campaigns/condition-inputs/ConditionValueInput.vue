@@ -37,14 +37,14 @@
 </template>
 
 <script setup>
-import { computed } from 'vue';
-import StatusValueInput from './StatusValueInput.vue';
-import SpecialValueInput from './SpecialValueInput.vue';
-import CppWinningDaysInput from './CppWinningDaysInput.vue';
-import NumericValueInput from './NumericValueInput.vue';
-import TextValueInput from './TextValueInput.vue';
-import { getValueInputType } from '@/utils/conditionFieldConfig';
-import { getValuePlaceholder } from '@/utils/specialValues';
+import { computed } from "vue";
+import StatusValueInput from "./StatusValueInput.vue";
+import SpecialValueInput from "./SpecialValueInput.vue";
+import CppWinningDaysInput from "./CppWinningDaysInput.vue";
+import NumericValueInput from "./NumericValueInput.vue";
+import TextValueInput from "./TextValueInput.vue";
+import { getValueInputType } from "@/utils/conditionFieldConfig";
+import { getValuePlaceholder } from "@/utils/specialValues";
 
 const props = defineProps({
     field: {
@@ -65,7 +65,7 @@ const props = defineProps({
     },
 });
 
-defineEmits(['update:value', 'update:threshold']);
+defineEmits(["update:value", "update:threshold"]);
 
 const inputType = computed(() => {
     return getValueInputType(props.field, props.value);
