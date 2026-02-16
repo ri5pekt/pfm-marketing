@@ -52,6 +52,33 @@
                             changes to the item.</small
                         >
                     </div>
+                    <!-- Append to Name action fields -->
+                    <div v-if="action.type === 'append_to_name'" class="field">
+                        <label>Text to Append *</label>
+                        <InputText
+                            :modelValue="action.text"
+                            @update:modelValue="updateAction(index, 'text', $event)"
+                            placeholder='e.g., " | #SSL"'
+                            class="w-full"
+                        />
+                        <small class="p-text-secondary mt-1 block"
+                            >This text will be added to the end of the item's name. Smart duplicate
+                            detection prevents adding text that already exists.</small
+                        >
+                    </div>
+                    <!-- Remove from Name action fields -->
+                    <div v-if="action.type === 'remove_from_name'" class="field">
+                        <label>Text to Remove *</label>
+                        <InputText
+                            :modelValue="action.text"
+                            @update:modelValue="updateAction(index, 'text', $event)"
+                            placeholder='e.g., " | #SSL"'
+                            class="w-full"
+                        />
+                        <small class="p-text-secondary mt-1 block"
+                            >This text will be removed from the item's name if found.</small
+                        >
+                    </div>
                     <!-- Adjust Daily Budget action fields -->
                     <template v-if="action.type === 'adjust_daily_budget'">
                         <div class="field">
@@ -141,6 +168,7 @@
 import { computed } from "vue";
 import Select from "primevue/select";
 import InputNumber from "primevue/inputnumber";
+import InputText from "primevue/inputtext";
 import Button from "primevue/button";
 import Checkbox from "primevue/checkbox";
 
@@ -168,17 +196,23 @@ const availableActionTypes = computed(() => {
     if (props.modelValue.ruleLevel === "ad") {
         return [
             { label: "Set Status", value: "set_status" },
+            { label: "Append to Name", value: "append_to_name" },
+            { label: "Remove from Name", value: "remove_from_name" },
             { label: "Send Notification", value: "send_notification" },
         ];
     } else if (props.modelValue.ruleLevel === "ad_set") {
         return [
             { label: "Adjust Daily Budget by Percentage", value: "adjust_daily_budget" },
             { label: "Set Status", value: "set_status" },
+            { label: "Append to Name", value: "append_to_name" },
+            { label: "Remove from Name", value: "remove_from_name" },
             { label: "Send Notification", value: "send_notification" },
         ];
     } else if (props.modelValue.ruleLevel === "campaign") {
         return [
             { label: "Set Status", value: "set_status" },
+            { label: "Append to Name", value: "append_to_name" },
+            { label: "Remove from Name", value: "remove_from_name" },
             { label: "Send Notification", value: "send_notification" },
         ];
     }
@@ -208,6 +242,7 @@ function onActionTypeChange(index) {
         percent: null,
         minCap: null,
         maxCap: null,
+        text: null,
     };
     // For send_notification, always enable slack notification
     if (action.type === "send_notification") {
@@ -238,6 +273,7 @@ function addAction() {
             percent: null,
             minCap: null,
             maxCap: null,
+            text: null,
             sendSlackNotification: true, // Default to true for all actions
         },
     ];
@@ -349,8 +385,16 @@ function removeAction(index) {
     margin-left: 0.5rem;
 }
 
+.mt-1 {
+    margin-top: 0.25rem;
+}
+
 .mt-3 {
     margin-top: 1rem;
+}
+
+.block {
+    display: block;
 }
 </style>
 

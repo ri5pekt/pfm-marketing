@@ -29,8 +29,20 @@ export async function httpRequest(url, options = {}) {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ detail: 'Request failed' }))
-      const error = new Error(errorData.detail || `HTTP error! status: ${response.status}`)
+      // Ensure error message is a string, handle objects/arrays
+      let errorMessage = 'Request failed'
+      if (typeof errorData.detail === 'string') {
+        errorMessage = errorData.detail
+      } else if (typeof errorData.detail === 'object') {
+        errorMessage = JSON.stringify(errorData.detail)
+      } else if (errorData.detail) {
+        errorMessage = String(errorData.detail)
+      } else {
+        errorMessage = `HTTP error! status: ${response.status}`
+      }
+      const error = new Error(errorMessage)
       error.status = response.status // Attach status code to error
+      error.data = errorData // Attach full error data for debugging
       throw error
     }
 

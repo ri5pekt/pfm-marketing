@@ -1,9 +1,5 @@
 <template>
     <div class="field">
-        <div class="field-label-row">
-            <label>Field *</label>
-            <span></span>
-        </div>
         <Select
             :modelValue="field"
             @update:modelValue="$emit('update:field', $event)"
@@ -38,18 +34,5 @@ defineEmits(["update:field"]);
     min-width: 0;
     display: flex;
     flex-direction: column;
-}
-
-.field-label-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 0.375rem;
-}
-
-label {
-    font-weight: 600;
-    font-size: 0.875rem;
-    color: var(--text-color);
 }
 </style>

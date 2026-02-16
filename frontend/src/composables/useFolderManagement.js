@@ -1,10 +1,13 @@
 import { ref, nextTick } from 'vue';
+import { useToast } from 'primevue/usetoast';
+import { exportFolder } from '@/api/metaCampaignsApi';
 
 /**
  * Composable for folder CRUD operations
  * Handles folder creation, editing, deletion, and state management
  */
 export function useFolderManagement(emit) {
+    const toast = useToast();
     const showNewFolderDialog = ref(false);
     const newFolderName = ref('');
     const folderEditName = ref('');
@@ -59,6 +62,34 @@ export function useFolderManagement(emit) {
         folderExpandedState[folder.id] = folder.expanded;
     }
 
+    async function handleCopyFolderJson(folderId) {
+        try {
+            // Fetch folder export data
+            const exportData = await exportFolder(folderId);
+            
+            // Convert to formatted JSON string
+            const jsonString = JSON.stringify(exportData, null, 2);
+            
+            // Copy to clipboard
+            await navigator.clipboard.writeText(jsonString);
+            
+            toast.add({
+                severity: 'success',
+                summary: 'Success',
+                detail: `Folder structure copied to clipboard! (${exportData.rules_count} rules)`,
+                life: 3000,
+            });
+        } catch (error) {
+            console.error('Failed to export folder:', error);
+            toast.add({
+                severity: 'error',
+                summary: 'Error',
+                detail: error.message || 'Failed to export folder',
+                life: 5000,
+            });
+        }
+    }
+
     return {
         showNewFolderDialog,
         newFolderName,
@@ -71,6 +102,7 @@ export function useFolderManagement(emit) {
         saveEditFolder,
         cancelEditFolder,
         handleDeleteFolder,
+        handleCopyFolderJson,
         toggleFolder,
     };
 }

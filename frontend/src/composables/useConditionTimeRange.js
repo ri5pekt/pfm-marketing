@@ -27,7 +27,7 @@ export function useConditionTimeRange(props, emit) {
                 // Initialize with global time range if available, or defaults
                 const defaultTimeRange = {
                     unit: props.globalTimeRange?.timeRangeUnit || "days",
-                    amount: props.globalTimeRange?.timeRangeAmount || 7,
+                    amount: parseInt(props.globalTimeRange?.timeRangeAmount) || 7,
                     exclude_today:
                         props.globalTimeRange?.excludeToday !== undefined ? props.globalTimeRange.excludeToday : true,
                 };
@@ -42,9 +42,10 @@ export function useConditionTimeRange(props, emit) {
     const conditionTimeRange = computed({
         get: () => {
             if (props.condition.time_range) {
+                const amount = parseInt(props.condition.time_range.amount);
                 return {
                     unit: props.condition.time_range.unit || "days",
-                    amount: props.condition.time_range.amount || 7,
+                    amount: isNaN(amount) ? 7 : amount,
                     exclude_today:
                         props.condition.time_range.exclude_today !== undefined
                             ? props.condition.time_range.exclude_today
@@ -92,6 +93,10 @@ export function useConditionTimeRange(props, emit) {
         if (field === "unit" && value === "today") {
             newTimeRange.amount = 1;
             newTimeRange.exclude_today = false;
+        }
+        // Ensure amount is always an integer
+        if (field === "amount") {
+            newTimeRange.amount = parseInt(value) || 1;
         }
         emit("update", { field: "time_range", value: newTimeRange });
     }

@@ -105,3 +105,12 @@ class RuleReorderRequest(BaseModel):
     ad_account_id: int
     items: List[RuleReorderItem]
 
+
+# Folder import/export schemas
+class FolderImportRequest(BaseModel):
+    ad_account_id: int
+    folder_json: Dict[str, Any]  # The exported JSON structure
+
+    class Config:
+        from_attributes = True
+

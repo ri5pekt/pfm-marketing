@@ -1,0 +1,367 @@
+﻿Meta Campaigns Automated Rules
+Last Updated • Feb 8, 2026
+
+
+
+Basic Rules
+Auto Optimizer | #AO - Ad Level
+This automated rule turns off ads if they reach a certain CPA and ROAS thresholds over the last 7 days only for ads with “#AO“ in the ad name & spend threshold is being met.
+
+* We can add the product name if we would like to set this rule for specific products. For example: #AO-FC (Face Cream)
+
+Criteria:
+        Ad Name Contains #AO-FC
+* ANDROAS < 1
+* AND Cost Per Purchase (CPA) > CPA Target
+* AND Ad Spend >= $300
+* AND Adset Status = ACTIVE
+* AND Campaign Status =  ACTIVE
+* Every Day at 00:00 EST.
+
+
+Product
+	Target CPA
+	SAFETY MARGIN
+	CPA (CONDITION)
+	ROAS (CONDITION)
+	SPEND (CONDITION)
+	Ad Name Contains
+	Face Cream
+	110$
+	5%
+	> 115$
+	< 1.00
+	>= 300$
+	#AO-FC
+	Gravite
+	78$
+	6%
+	> 83$
+	< 1.20
+	> 250$
+	#AO-GRVT
+	Neck Cream
+	95$
+	5%
+	> 100$
+	< 0.95
+	> 300$
+	#AO-NC
+	Shampoo
+	60$
+	5%
+	> 63$
+	< 1.00
+	>= 200$
+	#AO-SHM
+	Ab Firming Cream
+	90$
+	5%
+	> 94$
+	< 1.2
+	>= 250$
+	#AO-AFC
+	Anti-Gray Serum
+	90$
+	5%
+	> 94$
+	< 0.95
+	> 300$
+	#AO-AGS
+	Infinite Male
+	75$
+	5%
+	> 73$
+	< 1.3
+	> 250$
+	#AO-IM
+	
+
+  
+
+________________
+
+
+
+
+Late Attribution Reactivator | #AO - Ad Level
+This automated rule turns on paused ads with #AO in their name,
+if they got conversions after being paused for the last 2 days and yesterday spend below 10$.
+
+It gives another chance for assets that have already performed and maybe their performance tanked for a certain period.
+
+Criteria:
+        Ad Name Contains #AO
+* AND Spend - Yesterday  < $10
+* AND Purchases - Last 2 Days > 0
+* AND Ad Status = Paused
+* AND Adset Status = ACTIVE
+* AND Campaign Status =  ACTIVE
+* Every 15 minutes 24/7.
+
+
+  
+
+
+
+________________
+
+
+
+
+
+Profitable Gate Scaling | (Budget Increase) #PGS - Adset Level
+This automated rule increases the daily budget (+10%) if the Ad Set contains “#PGS” in their name & performs better than the Target CPA by overviewing both last 7 days & last 3 days performance.
+
+
+Note:
+When using daily budget increase rules we also need to set the Maximum daily budget cap.
+
+Increase Adset / Campaign Budget — IF ALL RULES MATCH:
+* Adset Name Contains #PGS-FC
+* AND Adset Status = ACTIVE
+* AND Campaign Status =  ACTIVE
+
+* AND Cost Per Purchase (Last 7 Days) < CPA (Condition)
+* AND Cost Per Purchase (Last 3 Days) < CPA (Condition)
+OR Cost Per Purchase (Last 3 Days) < CPA (Condition)
+Every Day (Except Sunday) at 00:00 EST
+
+Product
+	Target CPA
+	SAFETY MARGIN
+	CPA (CONDITION)
+	Ad Name Contains
+	Face Cream
+	110$
+	-5%
+	< 104$
+	#PGS-FC
+	Gravite
+	78$
+	-6%
+	< 73$
+	#PGS-GRVT
+	Neck Cream
+	95$
+	-5%
+	< 90$
+	#PGS-NC
+	Shampoo
+	60$
+	-5%
+	< 57$
+	#PGS-SHM
+	Ab Firming Cream
+	90$
+	-5%
+	< 86$
+	#PGS-AFC
+	Anti-Gray Serum
+	90$
+	-5%
+	< 86$
+	#PGS-AGS
+	Infinite Male
+	75$
+	-5%
+	< 72$
+	#PGS-IM
+	
+
+  
+
+
+
+
+
+________________
+
+
+
+
+
+Profitable Gate Scaling | (Budget Decrease) #PGS - Adset Level
+This automated rule decreases (-5%) the daily budget if the Ad Set contains “#PGS” in their name & performs better than the Target CPA by overviewing both last 7 days & last 3 days performance.
+
+Note:
+   1. When using daily budget decrease rules we need to set the Minimum daily budget cap.
+   2. Please add a metric that is called Contribution Margin = Formula = AOV-CPA.
+
+
+
+
+Decrease Adset / Campaign Budget — IF ALL RULES MATCH:
+   * Adset Name Contains #PGS-FC
+   * AND Adset Status = ACTIVE
+   * AND Campaign Status =  ACTIVE
+   * AND Cost Per Purchase (Last 7 Days) > CPA (Condition)
+Every Day (Except Sunday) at 00:00 EST
+
+Product
+	Target CPA
+	SAFETY MARGIN
+	CPA (CONDITION)
+	Face Cream
+	110$
+	5%
+	> 115$
+	Gravite
+	78$
+	6%
+	> 83$
+	Neck Cream
+	95$
+	5%
+	> 100$
+	Shampoo
+	60$
+	5%
+	> 63$
+	Ab Firming Cream
+	90$
+	5%
+	> 94$
+	Anti-Gray Serum
+	90$
+	5%
+	> 94$
+	Infinite Male
+	75$
+	5%
+	> 73$
+	
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+Advanced Rules
+Sunday's Stop Loss | Adset Deactivator | #SSL - ROAS Based
+Pauses underperforming ad sets only after they’ve effectively spent at least 90% budget on Sunday only and ROAS is Below 1.00 .
+
++ If this rule is triggered it also adds “ | #SSL” at the end of the Adset Name.
+
+Pauses Adset / Campaign — IF ALL RULES MATCH:
+   * Adset Spend Today > 0.9 X Adset Current Daily Budget
+   * AND Adset ROAS Today < 1
+   * AND Adset Status = ACTIVE
+   * AND Campaign Status =  ACTIVE
+   * AND  Campaign Name doesn’t contain Winback
+Every 15 Minutes only on Sundays.
+
+  
+
+________________
+
+
+
+
+Sunday's Stop Loss | Adset Reactivator | #SSL
+Activate paused adsets on monday that were turned off on Sunday because of the SSL Rule.
+Activate Adset— IF ALL RULES MATCH:
+   * AND Adset Status = PAUSED
+   * AND  Adset Name Contains #SSL
+   * AND Daily Budget > 0.
+Every Monday at 06:00 EST
+
+
+  
+
+
+
+________________
+
+
+
+
+Sunday's Stop Loss | Adset Name Remove | #SSL
+Removes “ | #SSL” from Adset Name 30 minutes after it has been reactivated on monday,
+
+Removes “ | #SSL” from the end of the adset name — IF ALL RULES MATCH:
+   * AND Adset Status = ACTIVE
+   * AND  Adset Name Contains #SSL
+   * AND Daily Budget > 0.
+Every Monday at 06:30 EST
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+Experimental Rules
+
+
+Winners Booster 10% | #PGS - Adset Level
+Boosts adsets daily budget by 10% of Current Daily Budget — IF ALL RULES MATCH:
+   * Contribution Total >= Current Daily Budget X 1.2
+   * AND Contribution Total <  Current Daily Budget X 1.4
+   * AND Adset Name Contains #PGS
+   * AND Adset Status = ACTIVE
+   * AND Campaign Status =  ACTIVE
+   * 20:00 every day (Except Sunday) | Rule range overview is set to today.
+
+Contribution Total Breakdown:
+      * ( Average Order Value - Cost Per Purchase) X Purchases
+
+
+Examples:
+      * Success Example — Increase by 10% of Current Daily Budget
+      * Contribution Total = 620$
+      * Current Daily Budget = 500$
+Current Daily Budget = 500$ —> New Daily Budget = 550$
+
+         * Logic
+IF  Today’s Gross Profit Volume (By 20:00) > Current Daily Budget
+THEN Increase Current Daily Budget by 10%+
+
+
+
+________________
+
+
+
+
+
+Winners Booster 20% | #PGS - Adset Level
+Boosts adsets daily budget by 20% of Current Daily Budget — IF ALL RULES MATCH:
+         * Contribution Total >= Current Daily Budget X 1.4
+         * AND Adset Name Contains #PGS
+         * AND Adset Status = ACTIVE
+         * AND Campaign Status =  ACTIVE
+         * 20:00 every day (Except Sunday) | Rule range overview is set to today.
+
+Contribution Total Breakdown:
+            * ( Average Order Value - Cost Per Purchase) X Purchases
+
+
+Examples:
+            * Success Example — Increase by 10% of Current Daily Budget
+            * Contribution Total = 1000$
+            * Current Daily Budget = 500$
+Current Daily Budget = 500$ —> New Daily Budget = 550$
+
+               * Logic
+IF  Today’s Gross Profit Volume (By 20:00) > Current Daily Budget
+THEN Increase Current Daily Budget by 20%+

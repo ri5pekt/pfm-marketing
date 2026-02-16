@@ -3,6 +3,7 @@
         <RulesToolbar
             :account-name="selectedAccount.name"
             @create-folder-click="folderMgmt.openNewFolderDialog()"
+            @import-folder-click="openImportDialog"
             @create-rule-click="ruleActions.navigateToCreateRule()"
         />
 
@@ -53,6 +54,7 @@
                         @save-edit="handleSaveEditFolder"
                         @cancel-edit="folderMgmt.cancelEditFolder($event)"
                         @delete-folder="folderMgmt.handleDeleteFolder($event)"
+                        @copy-folder-json="folderMgmt.handleCopyFolderJson($event)"
                         @folder-drag-enter="dragDrop.handleFolderDragEnter($event)"
                         @folder-drag-over="dragDrop.handleFolderDragOver($event)"
                         @folder-drag-leave="dragDrop.handleFolderDragLeave($event.folder, $event.e)"
@@ -75,6 +77,13 @@
             v-model:folder-name="folderMgmt.newFolderName.value"
             @create="folderMgmt.handleCreateFolder()"
         />
+        
+        <!-- Import Folder Dialog -->
+        <ImportFolderDialog
+            v-model:visible="showImportDialog"
+            :ad-account-id="selectedAccount?.id"
+            @import-success="handleImportFolder"
+        />
     </div>
 </template>
 
@@ -82,17 +91,22 @@
 import { ref, watch } from 'vue';
 import { VueDraggable } from 'vue-draggable-plus';
 import ProgressSpinner from 'primevue/progressspinner';
+import { useToast } from 'primevue/usetoast';
 
 // Components
 import RulesToolbar from './rules/RulesToolbar.vue';
 import RulesUngroupedSection from './rules/RulesUngroupedSection.vue';
 import RulesFolderItem from './rules/RulesFolderItem.vue';
 import NewFolderDialog from './dialogs/NewFolderDialog.vue';
+import ImportFolderDialog from './dialogs/ImportFolderDialog.vue';
 
 // Composables
 import { useRuleDragDrop } from '@/composables/useRuleDragDrop';
 import { useFolderManagement } from '@/composables/useFolderManagement';
 import { useRuleActions } from '@/composables/useRuleActions';
+
+// API
+import { importFolder } from '@/api/metaCampaignsApi';
 
 const props = defineProps({
     selectedAccount: {
@@ -125,11 +139,13 @@ const emit = defineEmits([
     'create-folder',
     'rename-folder',
     'delete-folder',
+    'folder-imported',
     'reorder-folders',
     'reorder-rules',
 ]);
 
 // Initialize composables
+const toast = useToast();
 const dragDrop = useRuleDragDrop(props, emit);
 const folderMgmt = useFolderManagement(emit);
 const ruleActions = useRuleActions(props, emit);
@@ -137,6 +153,7 @@ const ruleActions = useRuleActions(props, emit);
 // Local state
 const unifiedItems = ref([]);
 const foldersWithRules = ref([]);
+const showImportDialog = ref(false);
 
 // Watch for changes in rules or folders and reorganize
 watch(
@@ -218,6 +235,36 @@ function handleSaveEditFolder(folder, newName) {
         emit('rename-folder', folder.id, newName.trim());
     }
     folder.editing = false;
+}
+
+// Import folder handlers
+function openImportDialog() {
+    showImportDialog.value = true;
+}
+
+async function handleImportFolder(folderJson) {
+    try {
+        const result = await importFolder(props.selectedAccount.id, folderJson);
+        
+        toast.add({
+            severity: 'success',
+            summary: 'Success',
+            detail: `Imported folder "${result.folder_name}" with ${result.rules_imported} rules`,
+            life: 5000,
+        });
+        
+        // Close dialog and trigger reload
+        showImportDialog.value = false;
+        emit('folder-imported'); // Trigger parent reload after import
+    } catch (error) {
+        console.error('Failed to import folder:', error);
+        toast.add({
+            severity: 'error',
+            summary: 'Import Failed',
+            detail: error.message || 'Failed to import folder',
+            life: 5000,
+        });
+    }
 }
 </script>
 

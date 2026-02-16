@@ -57,6 +57,15 @@ export function useRuleJsonConverter(ruleForm, formErrors, scheduleFormErrors) {
                 } else if (typeof scope.value === "string" && scope.value.trim().length > 0) {
                     scopeObject.campaign_name_contains = [scope.value.trim()];
                 }
+            } else if (scope.type === "campaign_name_doesnt_contain") {
+                if (Array.isArray(scope.value) && scope.value.length > 0) {
+                    const filtered = scope.value.filter((v) => v && v.trim().length > 0);
+                    if (filtered.length > 0) {
+                        scopeObject.campaign_name_doesnt_contain = filtered;
+                    }
+                } else if (typeof scope.value === "string" && scope.value.trim().length > 0) {
+                    scopeObject.campaign_name_doesnt_contain = [scope.value.trim()];
+                }
             } else if (scope.type === "campaign_ids") {
                 if (Array.isArray(scope.value) && scope.value.length > 0) {
                     const filtered = scope.value.filter((v) => v && v.trim().length > 0);
@@ -72,7 +81,7 @@ export function useRuleJsonConverter(ruleForm, formErrors, scheduleFormErrors) {
             }
         });
 
-        // Build conditions JSON
+        // Build conditions JSON with new grouped format
         const conditionsJSON = {
             rule_level: ruleForm.value.ruleLevel,
             time_range: {
@@ -80,37 +89,39 @@ export function useRuleJsonConverter(ruleForm, formErrors, scheduleFormErrors) {
                 amount: ruleForm.value.timeRangeUnit === "today" ? 1 : ruleForm.value.timeRangeAmount || 1,
                 exclude_today: ruleForm.value.timeRangeUnit === "today" ? false : ruleForm.value.excludeToday,
             },
-            conditions: ruleForm.value.conditions.map((c, idx) => {
-                const conditionObj = {
-                    field: c.field,
-                    operator: c.operator,
-                    value: c.value,
-                };
-                // Include threshold for CPP Winning Days
-                if (c.field === "cpp_winning_days" && c.threshold !== null && c.threshold !== undefined) {
-                    conditionObj.threshold = c.threshold;
-                }
-                // Include time_range if condition has custom time range
-                // Check if time_range exists, is an object, not null, and has at least the unit property
-                // Use 'in' operator to check if property exists on the object
-                const hasTimeRange = c &&
-                    'time_range' in c &&
-                    c.time_range &&
-                    typeof c.time_range === "object" &&
-                    c.time_range !== null &&
-                    !Array.isArray(c.time_range) &&
-                    'unit' in c.time_range &&
-                    c.time_range.unit;
-
-                if (hasTimeRange) {
-                    conditionObj.time_range = {
-                        unit: c.time_range.unit || "days",
-                        amount: c.time_range.unit === "today" ? 1 : (c.time_range.amount || 1),
-                        exclude_today: c.time_range.unit === "today" ? false : (c.time_range.exclude_today !== undefined ? c.time_range.exclude_today : true),
+            condition_groups: ruleForm.value.conditionGroups.map(group => ({
+                conditions: group.conditions.map((c) => {
+                    const conditionObj = {
+                        field: c.field,
+                        operator: c.operator,
+                        value: c.value,
                     };
-                }
-                return conditionObj;
-            }),
+                    // Include time_range if condition has custom time range
+                    const hasTimeRange =
+                        c &&
+                        "time_range" in c &&
+                        c.time_range &&
+                        typeof c.time_range === "object" &&
+                        c.time_range !== null &&
+                        !Array.isArray(c.time_range) &&
+                        "unit" in c.time_range &&
+                        c.time_range.unit;
+
+                    if (hasTimeRange) {
+                        conditionObj.time_range = {
+                            unit: c.time_range.unit || "days",
+                            amount: c.time_range.unit === "today" ? 1 : c.time_range.amount || 1,
+                            exclude_today:
+                                c.time_range.unit === "today"
+                                    ? false
+                                    : c.time_range.exclude_today !== undefined
+                                      ? c.time_range.exclude_today
+                                      : true,
+                        };
+                    }
+                    return conditionObj;
+                })
+            })),
             ...scopeObject,
         };
 
@@ -125,11 +136,14 @@ export function useRuleJsonConverter(ruleForm, formErrors, scheduleFormErrors) {
                     action.percent = a.percent;
                     if (a.minCap !== null && a.minCap !== undefined) action.min_cap = a.minCap;
                     if (a.maxCap !== null && a.maxCap !== undefined) action.max_cap = a.maxCap;
+                } else if (a.type === "append_to_name" || a.type === "remove_from_name") {
+                    action.text = a.text;
                 }
                 if (a.type === "send_notification") {
                     action.send_slack_notification = true;
                 } else {
-                    action.send_slack_notification = a.sendSlackNotification !== undefined ? a.sendSlackNotification : true;
+                    action.send_slack_notification =
+                        a.sendSlackNotification !== undefined ? a.sendSlackNotification : true;
                 }
                 return action;
             }),
@@ -177,8 +191,12 @@ export function useRuleJsonConverter(ruleForm, formErrors, scheduleFormErrors) {
                     }
                 }
             }
-            if (!Array.isArray(json.conditions.conditions)) {
-                errors.push("'conditions.conditions' must be an array");
+            // Accept both old format (conditions) and new format (condition_groups)
+            const hasOldFormat = Array.isArray(json.conditions.conditions);
+            const hasNewFormat = Array.isArray(json.conditions.condition_groups);
+            
+            if (!hasOldFormat && !hasNewFormat) {
+                errors.push("Either 'conditions.conditions' or 'conditions.condition_groups' must be an array");
             }
         }
         if (!json.actions || typeof json.actions !== "object") {
@@ -225,7 +243,23 @@ export function useRuleJsonConverter(ruleForm, formErrors, scheduleFormErrors) {
                 typeof conditions.campaign_name_contains === "string" &&
                 conditions.campaign_name_contains.trim().length > 0
             ) {
-                scopeFilters.push({ type: "campaign_name_contains", value: [conditions.campaign_name_contains.trim()] });
+                scopeFilters.push({
+                    type: "campaign_name_contains",
+                    value: [conditions.campaign_name_contains.trim()],
+                });
+            }
+        }
+        if (conditions.campaign_name_doesnt_contain) {
+            if (Array.isArray(conditions.campaign_name_doesnt_contain) && conditions.campaign_name_doesnt_contain.length > 0) {
+                scopeFilters.push({ type: "campaign_name_doesnt_contain", value: conditions.campaign_name_doesnt_contain });
+            } else if (
+                typeof conditions.campaign_name_doesnt_contain === "string" &&
+                conditions.campaign_name_doesnt_contain.trim().length > 0
+            ) {
+                scopeFilters.push({
+                    type: "campaign_name_doesnt_contain",
+                    value: [conditions.campaign_name_doesnt_contain.trim()],
+                });
             }
         }
         if (conditions.campaign_ids) {
@@ -239,36 +273,80 @@ export function useRuleJsonConverter(ruleForm, formErrors, scheduleFormErrors) {
             }
         }
 
-        // Parse conditions array
-        const conditionsArray = (conditions.conditions || []).map((c) => {
-            let value = c.value;
-            // Normalize legacy special values (string) to structured form
-            if (typeof value === "string" && isSpecialValue(value)) {
-                value = { base: value, mul: 1 };
-            }
-            // Normalize structured values missing multiplier
-            if (typeof value === "object" && value && typeof value.base === "string" && value.mul === undefined) {
-                value = { ...value, mul: 1 };
-            }
-            const conditionObj = {
-                field: c.field,
-                operator: c.operator,
-                value,
-            };
-            // Include threshold for CPP Winning Days
-            if (c.field === "cpp_winning_days" && c.threshold !== null && c.threshold !== undefined) {
-                conditionObj.threshold = c.threshold;
-            }
-            // Include time_range if condition has custom time range
-            if (c.time_range) {
-                conditionObj.time_range = {
-                    unit: c.time_range.unit,
-                    amount: c.time_range.amount,
-                    exclude_today: c.time_range.exclude_today !== undefined ? c.time_range.exclude_today : true,
+        // Parse condition groups (handle both new and old formats)
+        let conditionGroups = [];
+        
+        // New format: condition_groups
+        if (conditions.condition_groups) {
+            conditionGroups = conditions.condition_groups.map((group) => ({
+                groupId: crypto.randomUUID(),
+                conditions: (group.conditions || []).map((c) => {
+                    let value = c.value;
+                    // Normalize legacy special values (string) to structured form
+                    if (typeof value === "string" && isSpecialValue(value)) {
+                        value = { base: value, mul: 1 };
+                    }
+                    // Normalize structured values missing multiplier
+                    if (typeof value === "object" && value && typeof value.base === "string" && value.mul === undefined) {
+                        value = { ...value, mul: 1 };
+                    }
+                    const conditionObj = {
+                        field: c.field,
+                        operator: c.operator,
+                        value,
+                    };
+                    // Include time_range if condition has custom time range
+                    if (c.time_range) {
+                        conditionObj.time_range = {
+                            unit: c.time_range.unit,
+                            amount: c.time_range.amount,
+                            exclude_today: c.time_range.exclude_today !== undefined ? c.time_range.exclude_today : true,
+                        };
+                    }
+                    return conditionObj;
+                })
+            }));
+        }
+        // Old format: flat conditions array (backward compatibility)
+        else if (conditions.conditions) {
+            const conditionsArray = (conditions.conditions || []).map((c) => {
+                let value = c.value;
+                // Normalize legacy special values (string) to structured form
+                if (typeof value === "string" && isSpecialValue(value)) {
+                    value = { base: value, mul: 1 };
+                }
+                // Normalize structured values missing multiplier
+                if (typeof value === "object" && value && typeof value.base === "string" && value.mul === undefined) {
+                    value = { ...value, mul: 1 };
+                }
+                const conditionObj = {
+                    field: c.field,
+                    operator: c.operator,
+                    value,
                 };
-            }
-            return conditionObj;
-        });
+                // Include time_range if condition has custom time range
+                if (c.time_range) {
+                    conditionObj.time_range = {
+                        unit: c.time_range.unit,
+                        amount: c.time_range.amount,
+                        exclude_today: c.time_range.exclude_today !== undefined ? c.time_range.exclude_today : true,
+                    };
+                }
+                return conditionObj;
+            });
+            // Wrap in single group for backward compatibility
+            conditionGroups = [{
+                groupId: crypto.randomUUID(),
+                conditions: conditionsArray
+            }];
+        }
+        // Default: empty group
+        else {
+            conditionGroups = [{
+                groupId: crypto.randomUUID(),
+                conditions: []
+            }];
+        }
 
         // Parse actions array
         const actionsArray = (actions.actions || []).map((action) => {
@@ -279,12 +357,13 @@ export function useRuleJsonConverter(ruleForm, formErrors, scheduleFormErrors) {
                 percent: action.percent || null,
                 minCap: action.min_cap || null,
                 maxCap: action.max_cap || null,
+                text: action.text || null,
                 sendSlackNotification:
                     action.type === "send_notification"
                         ? true
                         : action.send_slack_notification !== undefined
-                        ? action.send_slack_notification
-                        : true,
+                          ? action.send_slack_notification
+                          : true,
             };
         });
 
@@ -300,14 +379,20 @@ export function useRuleJsonConverter(ruleForm, formErrors, scheduleFormErrors) {
             scopeFilters: scopeFilters,
             timeRangeUnit: timeRange.unit || null,
             timeRangeAmount: timeRange.unit === "today" ? 1 : timeRange.amount || null,
-            excludeToday: timeRange.unit === "today" ? false : timeRange.exclude_today !== undefined ? timeRange.exclude_today : true,
-            conditions: conditionsArray,
+            excludeToday:
+                timeRange.unit === "today"
+                    ? false
+                    : timeRange.exclude_today !== undefined
+                      ? timeRange.exclude_today
+                      : true,
+            conditionGroups: conditionGroups,
             actions: actionsArray,
             schedulePeriod: parsed.period || "none",
             scheduleFrequency: parsed.frequency || 1,
             scheduleTime: parsed.time || null,
             scheduleDayOfWeek: parsed.dayOfWeek !== null ? parsed.dayOfWeek : null,
-            scheduleDayOfMonth: parsed.dayOfMonth !== null && parsed.dayOfMonth !== undefined ? parsed.dayOfMonth : null,
+            scheduleDayOfMonth:
+                parsed.dayOfMonth !== null && parsed.dayOfMonth !== undefined ? parsed.dayOfMonth : null,
             scheduleTimezone: parsed.timezone || "UTC",
             customDailySchedule: parsed.customDailySchedule || {},
         };
@@ -393,4 +478,3 @@ export function useRuleJsonConverter(ruleForm, formErrors, scheduleFormErrors) {
         validateRuleJSON,
     };
 }
-

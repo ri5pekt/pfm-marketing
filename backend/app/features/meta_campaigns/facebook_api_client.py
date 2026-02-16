@@ -57,6 +57,7 @@ def fetch_facebook_data(
     limit: int = None,
     scope_filters: Dict[str, Any] = None,
     effective_status_in: List[str] | None = None,
+    api_call_counter: Dict[str, int] = None,
 ):
     """
     Fetch all campaigns, adsets, or ads from Facebook API with pagination support.
@@ -122,6 +123,33 @@ def fetch_facebook_data(
             filtering = json.dumps(filter_list)
             logger.info(f"[FETCH] Added effective_status IN filter to API request: {status_filter['value']}")
 
+    # OPTIMIZATION: Add IDs filter to API request if provided in scope_filters
+    # This dramatically reduces API calls when targeting specific items by ID
+    if scope_filters and "ids" in scope_filters and scope_filters["ids"]:
+        ids_filter = scope_filters["ids"]
+        # Convert string to list if needed
+        if isinstance(ids_filter, str):
+            ids_filter = [id_val.strip() for id_val in ids_filter.replace("\n", ",").split(",") if id_val.strip()]
+
+        if isinstance(ids_filter, list) and ids_filter:
+            # Parse existing filtering JSON
+            try:
+                filter_list = json.loads(filtering)
+            except json.JSONDecodeError:
+                filter_list = []
+
+            # Add IDs filter
+            ids_filter_obj = {
+                "field": "id",
+                "operator": "IN",
+                "value": ids_filter
+            }
+            filter_list.append(ids_filter_obj)
+
+            # Convert back to JSON string
+            filtering = json.dumps(filter_list)
+            logger.info(f"[FETCH] OPTIMIZATION: Added IDs filter to API request: {len(ids_filter)} item(s) - {ids_filter[:5]}{'...' if len(ids_filter) > 5 else ''}")
+
     # Add campaign_ids filter to API request if provided in scope_filters
     if scope_filters and "campaign_ids" in scope_filters and scope_filters["campaign_ids"]:
         campaign_ids = scope_filters["campaign_ids"]
@@ -156,6 +184,32 @@ def fetch_facebook_data(
             filtering = json.dumps(filter_list)
             logger.info(f"[FETCH] Added campaign_ids filter to API request: {len(campaign_ids)} campaign(s) - {campaign_ids[:5]}{'...' if len(campaign_ids) > 5 else ''}")
 
+    # Add adset_ids filter to API request if provided in scope_filters (for ad-level rules)
+    if scope_filters and "adset_ids" in scope_filters and scope_filters["adset_ids"] and rule_level == "ad":
+        adset_ids = scope_filters["adset_ids"]
+        # Convert string to list if needed
+        if isinstance(adset_ids, str):
+            adset_ids = [id_val.strip() for id_val in adset_ids.replace("\n", ",").split(",") if id_val.strip()]
+
+        if isinstance(adset_ids, list) and adset_ids:
+            # Parse existing filtering JSON
+            try:
+                filter_list = json.loads(filtering)
+            except json.JSONDecodeError:
+                filter_list = []
+
+            # For ads, filter by adset.id field
+            adset_filter = {
+                "field": "adset.id",
+                "operator": "IN",
+                "value": adset_ids
+            }
+            filter_list.append(adset_filter)
+
+            # Convert back to JSON string
+            filtering = json.dumps(filter_list)
+            logger.info(f"[FETCH] Added adset_ids filter to API request: {len(adset_ids)} adset(s) - {adset_ids[:5]}{'...' if len(adset_ids) > 5 else ''}")
+
     all_items = []
     # Add filtering parameter to exclude archived/deleted items (URL-encode the JSON filter)
     filtering_encoded = quote(filtering)
@@ -173,6 +227,11 @@ def fetch_facebook_data(
 
             response = requests.get(url, timeout=30)
             request_time = time.time() - page_start_time
+            
+            # Track API call
+            if api_call_counter is not None:
+                api_call_counter["total"] += 1
+                api_call_counter["fetch_items"] += 1
 
             # Check for rate limiting errors before raising
             if response.status_code == 400:
@@ -312,13 +371,19 @@ def fetch_facebook_data(
         raise
 
 
-def fetch_insights(account_id: str, access_token: str, rule_level: str, ids: List[str], time_range: Dict[str, Any]):
+def fetch_insights(account_id: str, access_token: str, rule_level: str, ids: List[str], time_range: Dict[str, Any], api_call_counter: Dict[str, int] = None):
     """Fetch insights for the given IDs and time range"""
     base_url = "https://graph.facebook.com/v21.0"
 
     # Ensure account_id has 'act_' prefix
     if not account_id.startswith("act_"):
         account_id = f"act_{account_id}"
+
+    # Defensive: check if time_range values are lists and log warning
+    if time_range:
+        for key, value in time_range.items():
+            if isinstance(value, list):
+                logger.warning(f"[INSIGHTS] time_range['{key}'] is a list: {value}. Converting to scalar.")
 
     # Build time range string
     time_range_str = build_time_range_string(time_range)
@@ -380,6 +445,12 @@ def fetch_insights(account_id: str, access_token: str, rule_level: str, ids: Lis
         try:
             batch_start_time = time.time()
             response = requests.get(endpoint, params=params, timeout=60)
+            
+            # Track API call
+            if api_call_counter is not None:
+                api_call_counter["total"] += 1
+                api_call_counter["fetch_insights"] += 1
+            
             response.raise_for_status()
             check_rate_limit_headers(response, "insights", account_id=account_id)
             data = response.json()
@@ -618,6 +689,24 @@ def build_time_range_string(time_range: Dict[str, Any]) -> str:
     unit = time_range.get("unit", "days")
     amount = time_range.get("amount", 1)
     exclude_today = time_range.get("exclude_today", True)
+    
+    # Defensive: ensure values are not lists
+    if isinstance(unit, list):
+        unit = unit[0] if unit else "days"
+        logger.warning(f"time_range 'unit' was a list, using first element: {unit}")
+    if isinstance(amount, list):
+        amount = amount[0] if amount else 1
+        logger.warning(f"time_range 'amount' was a list, using first element: {amount}")
+    if isinstance(exclude_today, list):
+        exclude_today = exclude_today[0] if exclude_today else True
+        logger.warning(f"time_range 'exclude_today' was a list, using first element: {exclude_today}")
+    
+    # Ensure amount is an integer
+    try:
+        amount = int(amount)
+    except (TypeError, ValueError):
+        logger.warning(f"Invalid amount value: {amount}, defaulting to 1")
+        amount = 1
 
     # Handle "today" unit - from 00:00 today to now
     if unit == "today":

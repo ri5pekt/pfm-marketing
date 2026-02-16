@@ -49,11 +49,20 @@ export function useFolders() {
 
     async function createFolder(name, accountId) {
         try {
+            // Validate inputs before making API call
+            if (!name || typeof name !== 'string' || !name.trim()) {
+                throw new Error('Folder name is required');
+            }
+            if (!accountId) {
+                throw new Error('Ad account ID is required');
+            }
+            
             const newFolder = await apiCreateFolder({
                 ad_account_id: accountId,
-                name: name,
+                name: name.trim(),
                 position: folders.value.length,
             });
+            
             folders.value.push(newFolder);
             toast.add({
                 severity: "success",

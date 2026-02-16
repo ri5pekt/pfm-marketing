@@ -1,32 +1,41 @@
 <template>
     <div v-if="modelValue.ruleLevel" class="form-section">
         <h3 class="section-title">4. Conditions</h3>
-        <div v-if="modelValue.conditions.length === 0" class="empty-message">
-            <p>No conditions defined. Click "Add Condition" to add one.</p>
+        
+        <div v-if="modelValue.conditionGroups.length === 0" class="empty-message">
+            <p>No condition groups defined. Click "Add Group" to add one.</p>
         </div>
-        <div v-else class="conditions-list">
-            <ConditionItem
-                v-for="(condition, index) in modelValue.conditions"
-                :key="index"
-                :condition="condition"
-                :index="index"
-                :availableConditionFields="availableConditionFields"
-                :operatorOptions="operatorOptions"
-                :statusOptions="statusOptions"
-                :availableSpecialValues="availableSpecialValues"
-                :globalTimeRange="globalTimeRange"
-                @update="handleConditionUpdate(index, $event)"
-                @remove="removeCondition(index)"
-            />
+        
+        <div v-else class="condition-groups-list">
+            <template v-for="(group, groupIdx) in modelValue.conditionGroups" :key="group.groupId">
+                <!-- OR Divider (between groups) -->
+                <ConditionGroupDivider v-if="groupIdx > 0" />
+                
+                <!-- Condition Group -->
+                <ConditionGroup
+                    :group="group"
+                    :group-index="groupIdx"
+                    :can-delete="modelValue.conditionGroups.length > 1"
+                    :available-condition-fields="availableConditionFields"
+                    :operator-options="operatorOptions"
+                    :status-options="statusOptions"
+                    :available-special-values="availableSpecialValues"
+                    :global-time-range="globalTimeRange"
+                    @update-condition="handleGroupConditionUpdate(groupIdx, $event)"
+                    @remove-condition="handleGroupConditionRemove(groupIdx, $event)"
+                    @add-condition="handleGroupConditionAdd(groupIdx)"
+                    @remove-group="removeGroup(groupIdx)"
+                />
+            </template>
         </div>
-        <div class="field mt-3">
+
+        <div class="add-group-section">
             <Button
-                label="Add Condition"
-                icon="pi pi-plus"
+                label="Add Group"
+                icon="pi pi-plus-circle"
                 severity="secondary"
                 outlined
-                @click="addCondition"
-                :disabled="!modelValue.ruleLevel"
+                @click="addGroup"
             />
         </div>
     </div>
@@ -35,7 +44,8 @@
 <script setup>
 import { computed } from "vue";
 import Button from "primevue/button";
-import ConditionItem from "./ConditionItem.vue";
+import ConditionGroup from "./ConditionGroup.vue";
+import ConditionGroupDivider from "./ConditionGroupDivider.vue";
 import { getAvailableSpecialValues } from "@/utils/specialValues";
 
 const props = defineProps({
@@ -66,11 +76,13 @@ const adConditionFields = [
     { label: "Cost Per Purchase", value: "cpp" },
     { label: "Spend", value: "spend" },
     { label: "Conversions", value: "conversions" },
+    { label: "ROAS", value: "roas" },
+    { label: "AOV (Average Order Value)", value: "aov" },
     { label: "CTR", value: "ctr" },
     { label: "CPC", value: "cpc" },
     { label: "CPM", value: "cpm" },
-    { label: "CPP Winning Days", value: "cpp_winning_days" },
     { label: "Status", value: "status" },
+    { label: "Adset Status", value: "adset_status" },
     { label: "Campaign Status", value: "campaign_status" },
     { label: "Amount of Active Ads", value: "amount_of_active_ads" },
 ];
@@ -80,9 +92,10 @@ const adSetConditionFields = [
     { label: "Spend", value: "spend" },
     { label: "Conversions", value: "conversions" },
     { label: "ROAS", value: "roas" },
+    { label: "AOV (Average Order Value)", value: "aov" },
     { label: "Daily budget", value: "daily_budget" },
+    { label: "Contribution Total", value: "contribution_total" },
     { label: "Media Margin Volume", value: "media_margin_volume" },
-    { label: "CPP Winning Days", value: "cpp_winning_days" },
     { label: "Status", value: "status" },
     { label: "Campaign Status", value: "campaign_status" },
     { label: "Amount of Active Ads", value: "amount_of_active_ads" },
@@ -93,7 +106,7 @@ const campaignConditionFields = [
     { label: "Spend", value: "spend" },
     { label: "Conversions", value: "conversions" },
     { label: "ROAS", value: "roas" },
-    { label: "CPP Winning Days", value: "cpp_winning_days" },
+    { label: "AOV (Average Order Value)", value: "aov" },
     { label: "Status", value: "status" },
     { label: "Amount of Active Ads", value: "amount_of_active_ads" },
 ];
@@ -121,42 +134,66 @@ const globalTimeRange = computed(() => {
     };
 });
 
-function handleConditionUpdate(index, { field, value }) {
-    const newConditions = [...props.modelValue.conditions];
-    // Ensure we preserve all existing properties of the condition
-    const existingCondition = newConditions[index] || {};
-    newConditions[index] = {
-        ...existingCondition,
-        [field]: value,
+function addGroup() {
+    emit("update:modelValue", {
+        ...props.modelValue,
+        conditionGroups: [
+            ...props.modelValue.conditionGroups,
+            {
+                groupId: crypto.randomUUID(),
+                conditions: []
+            }
+        ]
+    });
+}
+
+function removeGroup(groupIndex) {
+    if (props.modelValue.conditionGroups.length <= 1) return;
+    
+    const newGroups = [...props.modelValue.conditionGroups];
+    newGroups.splice(groupIndex, 1);
+    
+    emit("update:modelValue", {
+        ...props.modelValue,
+        conditionGroups: newGroups
+    });
+}
+
+function handleGroupConditionUpdate(groupIndex, { index, update }) {
+    const newGroups = [...props.modelValue.conditionGroups];
+    const condition = newGroups[groupIndex].conditions[index];
+    newGroups[groupIndex].conditions[index] = {
+        ...condition,
+        [update.field]: update.value
     };
-
+    
     emit("update:modelValue", {
         ...props.modelValue,
-        conditions: newConditions,
+        conditionGroups: newGroups
     });
 }
 
-function addCondition() {
-    const newConditions = [
-        ...props.modelValue.conditions,
-        {
-            field: null,
-            operator: null,
-            value: null,
-        },
-    ];
+function handleGroupConditionRemove(groupIndex, conditionIndex) {
+    const newGroups = [...props.modelValue.conditionGroups];
+    newGroups[groupIndex].conditions.splice(conditionIndex, 1);
+    
     emit("update:modelValue", {
         ...props.modelValue,
-        conditions: newConditions,
+        conditionGroups: newGroups
     });
 }
 
-function removeCondition(index) {
-    const newConditions = [...props.modelValue.conditions];
-    newConditions.splice(index, 1);
+function handleGroupConditionAdd(groupIndex) {
+    const newGroups = [...props.modelValue.conditionGroups];
+    newGroups[groupIndex].conditions.push({
+        field: null,
+        operator: null,
+        value: null
+    });
+    
     emit("update:modelValue", {
         ...props.modelValue,
-        conditions: newConditions,
+        conditionGroups: newGroups
     });
 }
 </script>
@@ -187,10 +224,13 @@ function removeCondition(index) {
     margin-bottom: 1rem;
 }
 
-.conditions-list {
+.condition-groups-list {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+}
+
+.add-group-section {
+    margin-top: 1.5rem;
 }
 
 .field {

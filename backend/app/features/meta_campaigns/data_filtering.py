@@ -188,6 +188,96 @@ def apply_scope_filters(data: List[Dict], scope_filters: Dict[str, Any], rule_le
                         logger.warning(f"Error fetching campaigns for campaign_name_contains filter: {str(e)}")
                         # If we can't fetch campaigns, we can't filter, so keep all data
 
+    # Campaign Name doesn't contain filter
+    if "campaign_name_doesnt_contain" in scope_filters and scope_filters["campaign_name_doesnt_contain"]:
+        keywords = scope_filters["campaign_name_doesnt_contain"]
+        if isinstance(keywords, list) and keywords:
+            if rule_level == "campaign":
+                # For campaign level, filter OUT campaigns that contain any keyword
+                logger.info(f"Applying campaign_name_doesnt_contain filter at campaign level: {len(filtered_data)} items before filter")
+                filtered_data = [
+                    item for item in filtered_data
+                    if not any(keyword.lower() in item.get("name", "").lower() for keyword in keywords)
+                ]
+                logger.info(f"After campaign_name_doesnt_contain filter: {len(filtered_data)} items remaining (excluded keywords: {keywords})")
+            else:
+                # For ad/adset level, fetch campaigns, then filter OUT by campaign_id
+                if account_id and access_token:
+                    try:
+                        filter_start_time = time.time()
+                        logger.info(f"Fetching campaigns for campaign_name_doesnt_contain filter (keywords to exclude: {keywords})...")
+                        
+                        # Fetch campaigns
+                        base_url = "https://graph.facebook.com/v21.0"
+                        if not account_id.startswith("act_"):
+                            account_id_formatted = f"act_{account_id}"
+                        else:
+                            account_id_formatted = account_id
+
+                        # OPTIMIZATION: If campaign_ids is set, only fetch those specific campaigns
+                        campaign_filtering = None
+                        if "campaign_ids" in scope_filters and scope_filters["campaign_ids"]:
+                            campaign_ids_to_fetch = scope_filters["campaign_ids"]
+                            if isinstance(campaign_ids_to_fetch, str):
+                                campaign_ids_to_fetch = [id_val.strip() for id_val in campaign_ids_to_fetch.replace("\n", ",").split(",") if id_val.strip()]
+                            if isinstance(campaign_ids_to_fetch, list) and campaign_ids_to_fetch:
+                                campaign_filtering = json.dumps([{
+                                    "field": "id",
+                                    "operator": "IN",
+                                    "value": campaign_ids_to_fetch
+                                }])
+
+                        all_campaigns = []
+                        url = f"{base_url}/{account_id_formatted}/campaigns"
+                        params = {
+                            "fields": "id,name",
+                            "limit": 2000,
+                            "access_token": access_token
+                        }
+                        if campaign_filtering:
+                            params["filtering"] = quote(campaign_filtering)
+
+                        using_next_url = False
+                        while True:
+                            if using_next_url:
+                                response = requests.get(url, timeout=30)
+                            else:
+                                response = requests.get(url, params=params, timeout=30)
+                            response.raise_for_status()
+                            check_rate_limit_headers(response, "read", account_id=account_id)
+                            data = response.json()
+                            all_campaigns.extend(data.get("data", []))
+                            next_url = data.get("paging", {}).get("next")
+                            if not next_url:
+                                break
+                            url = next_url
+                            using_next_url = True
+                            time.sleep(READ_DELAY)
+
+                        filter_elapsed = time.time() - filter_start_time
+                        logger.info(f"[TIMING] Campaign fetch for campaign_name_doesnt_contain filter took {filter_elapsed:.2f} seconds")
+
+                        # Filter OUT campaigns that contain any of the keywords
+                        excluded_campaign_ids = [
+                            str(campaign.get("id"))
+                            for campaign in all_campaigns
+                            if any(keyword.lower() in campaign.get("name", "").lower() for keyword in keywords)
+                        ]
+                        logger.info(f"Found {len(excluded_campaign_ids)} campaigns to EXCLUDE (contain keywords: {keywords})")
+
+                        # Filter ads/adsets to exclude items from excluded campaigns
+                        logger.info(f"Filtering {rule_level} items by campaign_id: {len(filtered_data)} items before filter")
+                        if excluded_campaign_ids:
+                            filtered_data = [
+                                item for item in filtered_data
+                                if str(item.get("campaign_id", "")) not in excluded_campaign_ids
+                            ]
+                            logger.info(f"After campaign_name_doesnt_contain filter: {len(filtered_data)} items remaining")
+                        else:
+                            logger.info("No campaigns to exclude, all items remain")
+                    except Exception as e:
+                        logger.warning(f"Error fetching campaigns for campaign_name_doesnt_contain filter: {str(e)}")
+
     # Campaign IDs filter
     if "campaign_ids" in scope_filters and scope_filters["campaign_ids"]:
         campaign_ids = scope_filters["campaign_ids"]

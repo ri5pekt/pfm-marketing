@@ -9,6 +9,18 @@
           <h2>PFM Marketing</h2>
           <span class="version">v{{ APP_VERSION }}</span>
         </div>
+        <div v-if="pageHeader.showBackButton" class="header-separator"></div>
+        <Button 
+          v-if="pageHeader.showBackButton" 
+          icon="pi pi-arrow-left" 
+          label="Back" 
+          text 
+          @click="pageHeader.onBack" 
+          class="header-back-button" 
+        />
+        <div v-if="pageHeader.title" class="page-header-title">
+          <h2>{{ pageHeader.title }}</h2>
+        </div>
       </div>
       <div class="header-right">
         <div class="user-info">
@@ -54,7 +66,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed, watch } from 'vue'
+import { ref, onMounted, computed, watch, reactive, provide } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import Button from 'primevue/button'
@@ -67,6 +79,17 @@ const authStore = useAuthStore()
 
 // Create a local computed for email
 const userEmail = computed(() => authStore.user?.email || '')
+
+// Page header state for child routes to customize
+const pageHeader = reactive({
+  title: '',
+  subtitle: '',
+  showBackButton: false,
+  onBack: () => {}
+})
+
+// Provide to child components
+provide('pageHeader', pageHeader)
 
 onMounted(async () => {
   // Ensure user is loaded when component mounts
@@ -85,6 +108,11 @@ const menuItems = ref([
     path: '/meta-campaigns',
     label: 'Meta Campaigns',
     icon: 'pi pi-facebook'
+  },
+  {
+    path: '/meta-campaigns/logs',
+    label: 'Rule Execution Logs',
+    icon: 'pi pi-list'
   }
 ])
 
@@ -150,6 +178,26 @@ async function handleLogout() {
   font-size: 0.75rem;
   color: #6b7280;
   margin-left: 0.5rem;
+}
+
+.header-separator {
+  width: 1px;
+  height: 32px;
+  background-color: #e5e7eb;
+  margin: 0 1.5rem;
+  flex-shrink: 0;
+}
+
+.header-back-button {
+  flex-shrink: 0;
+}
+
+.page-header-title h2 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #1f2937;
+  margin: 0;
+  line-height: 1.2;
 }
 
 .header-right {

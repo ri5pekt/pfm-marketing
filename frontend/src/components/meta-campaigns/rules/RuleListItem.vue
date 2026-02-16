@@ -8,6 +8,10 @@
                 <div class="rule-meta">
                     <Tag :value="rule.enabled ? 'Enabled' : 'Disabled'" :severity="rule.enabled ? 'success' : 'secondary'" />
                     <span class="rule-schedule">{{ formatSchedule(rule.schedule_cron) }}</span>
+                    <span class="rule-time-inline">
+                        <i class="pi pi-history"></i>
+                        Last: {{ formatDateWithTimezone(rule.last_run_at, rule.schedule_cron) }}
+                    </span>
                 </div>
                 <div class="action-buttons">
                     <Button
@@ -50,12 +54,8 @@
                 </div>
             </div>
             <div v-if="rule.description" class="rule-description">{{ rule.description }}</div>
-            <div class="rule-times">
+            <div v-if="rule.schedule_cron" class="rule-times">
                 <span class="rule-time">
-                    <i class="pi pi-history"></i>
-                    Last: {{ formatDateWithTimezone(rule.last_run_at, rule.schedule_cron) }}
-                </span>
-                <span v-if="rule.schedule_cron" class="rule-time">
                     <i class="pi pi-clock"></i>
                     Next: {{ formatDateWithTimezone(rule.next_run_at, rule.schedule_cron) }}
                 </span>
@@ -172,6 +172,19 @@ defineEmits(['test-rule', 'cancel-test', 'view-logs', 'edit-rule', 'delete-rule'
     font-size: 0.875rem;
     color: var(--text-color-secondary);
     white-space: nowrap;
+}
+
+.rule-time-inline {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    font-size: 0.875rem;
+    color: #6b7280;
+    white-space: nowrap;
+}
+
+.rule-time-inline i {
+    font-size: 0.875rem;
 }
 
 .rule-times {

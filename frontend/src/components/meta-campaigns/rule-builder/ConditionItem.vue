@@ -26,30 +26,13 @@
                 @update:operator="update('operator', $event)"
             />
 
-            <div class="field">
-                <div class="field-label-row">
-                    <label>Value *</label>
-                    <SpecialValueSelector
-                        :field="condition.field"
-                        :available-special-values="availableSpecialValues"
-                        @select="insertSpecialValue"
-                    />
-                    <span v-if="availableSpecialValues.length === 0"></span>
-                </div>
-
-                <ConditionValueInput
-                    :field="condition.field"
-                    :value="condition.value"
-                    :threshold="condition.threshold"
-                    :status-options="statusOptions"
-                    @update:value="update('value', $event)"
-                    @update:threshold="update('threshold', $event)"
-                />
-
-                <small v-if="isSpecialValue(condition.value)" class="special-value-label">
-                    {{ getSpecialValueLabel(condition.value) }}
-                </small>
-            </div>
+            <CompactConditionValueInput
+                :field="condition.field"
+                :value="condition.value"
+                :status-options="statusOptions"
+                :available-special-values="availableSpecialValues"
+                @update:value="update('value', $event)"
+            />
         </div>
 
         <ConditionTimeRange
@@ -59,20 +42,18 @@
             :time-range-unit-options="timeRange.timeRangeUnitOptions"
             :global-time-range-label="timeRange.globalTimeRangeLabel.value"
             @toggle-custom="timeRange.toggleCustomTimeRange($event)"
-            @update-time-range="timeRange.updateTimeRange($event, arguments[1])"
+            @update-time-range="(field, value) => timeRange.updateTimeRange(field, value)"
         />
     </div>
 </template>
 
 <script setup>
-import Button from 'primevue/button';
-import ConditionFieldSelector from '../condition-inputs/ConditionFieldSelector.vue';
-import ConditionOperatorSelector from '../condition-inputs/ConditionOperatorSelector.vue';
-import ConditionValueInput from '../condition-inputs/ConditionValueInput.vue';
-import SpecialValueSelector from '../condition-inputs/SpecialValueSelector.vue';
-import ConditionTimeRange from '../condition-inputs/ConditionTimeRange.vue';
-import { useConditionTimeRange } from '@/composables/useConditionTimeRange';
-import { isSpecialValue, getSpecialValueLabel } from '@/utils/specialValues';
+import Button from "primevue/button";
+import ConditionFieldSelector from "../condition-inputs/ConditionFieldSelector.vue";
+import ConditionOperatorSelector from "../condition-inputs/ConditionOperatorSelector.vue";
+import CompactConditionValueInput from "../condition-inputs/CompactConditionValueInput.vue";
+import ConditionTimeRange from "../condition-inputs/ConditionTimeRange.vue";
+import { useConditionTimeRange } from "@/composables/useConditionTimeRange";
 
 const props = defineProps({
     condition: {
@@ -105,28 +86,19 @@ const props = defineProps({
     },
 });
 
-const emit = defineEmits(['update', 'remove']);
+const emit = defineEmits(["update", "remove"]);
 
 // Initialize time range composable
 const timeRange = useConditionTimeRange(props, emit);
 
 function update(field, value) {
-    emit('update', { field, value });
+    emit("update", { field, value });
 }
 
 function updateField(value) {
-    // Reset value and threshold when field changes
-    emit('update', { field: 'field', value });
-    emit('update', { field: 'value', value: null });
-    // Clear threshold if field is not cpp_winning_days
-    if (value !== 'cpp_winning_days') {
-        emit('update', { field: 'threshold', value: null });
-    }
-}
-
-function insertSpecialValue(specialValue) {
-    // Store as structured value so we can apply multiplier in backend
-    emit('update', { field: 'value', value: { base: specialValue, mul: 1 } });
+    // Reset value when field changes
+    emit("update", { field: "field", value });
+    emit("update", { field: "value", value: null });
 }
 </script>
 
@@ -161,29 +133,4 @@ function insertSpecialValue(specialValue) {
     }
 }
 
-.condition-fields > .field {
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-}
-
-.field-label-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 0.375rem;
-}
-
-.field-label-row label {
-    font-weight: 600;
-    font-size: 0.875rem;
-    color: var(--text-color);
-}
-
-.special-value-label {
-    display: block;
-    margin-top: 0.375rem;
-    color: var(--text-color-secondary);
-    font-size: 0.8125rem;
-}
 </style>

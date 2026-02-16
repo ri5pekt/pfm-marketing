@@ -44,6 +44,11 @@ export const FIELD_CONFIG = {
         operators: OPERATORS.EQUALITY,
         supportsSpecialValues: false,
     },
+    adset_status: {
+        type: FIELD_TYPES.STATUS,
+        operators: OPERATORS.EQUALITY,
+        supportsSpecialValues: false,
+    },
     spend: {
         type: FIELD_TYPES.NUMERIC,
         operators: OPERATORS.COMPARISON,
@@ -69,6 +74,11 @@ export const FIELD_CONFIG = {
         operators: OPERATORS.COMPARISON,
         supportsSpecialValues: false,
     },
+    aov: {
+        type: FIELD_TYPES.NUMERIC,
+        operators: OPERATORS.COMPARISON,
+        supportsSpecialValues: false,
+    },
     ctr: {
         type: FIELD_TYPES.NUMERIC,
         operators: OPERATORS.COMPARISON,
@@ -78,12 +88,6 @@ export const FIELD_CONFIG = {
         type: FIELD_TYPES.NUMERIC,
         operators: OPERATORS.COMPARISON,
         supportsSpecialValues: false,
-    },
-    cpp_winning_days: {
-        type: FIELD_TYPES.SPECIAL, // Special handling for cpp_winning_days
-        operators: OPERATORS.COMPARISON,
-        supportsSpecialValues: false,
-        requiresThreshold: true,
     },
     name: {
         type: FIELD_TYPES.TEXT,
@@ -138,23 +142,11 @@ export function isFieldStatus(fieldName) {
 }
 
 /**
- * Check if field requires threshold (like cpp_winning_days)
- */
-export function fieldRequiresThreshold(fieldName) {
-    const config = getFieldConfig(fieldName);
-    return config.requiresThreshold === true;
-}
-
-/**
  * Determine value input component type based on field
  */
 export function getValueInputType(fieldName, value) {
     if (isFieldStatus(fieldName)) {
         return "status";
-    }
-
-    if (fieldRequiresThreshold(fieldName)) {
-        return "cpp-winning-days";
     }
 
     // Check if value is a special value (object with base and mul)

@@ -139,6 +139,19 @@ def calculate_metric_from_insights(insights: Dict, field: str) -> float:
         if revenue <= 0:
             return 0
         return revenue / spend
+    elif field == "aov":
+        """
+        Average Order Value (AOV):
+          Total purchase value / number of purchases
+        
+        This is the average revenue per purchase/conversion.
+        """
+        purchase_value = calculate_metric_from_insights(insights, "purchase_value")
+        purchase_count = calculate_metric_from_insights(insights, "purchase_count")
+        
+        if purchase_count > 0:
+            return purchase_value / purchase_count
+        return 0
     elif field == "media_margin_volume":
         """
         Media Margin Volume (today):
@@ -155,13 +168,29 @@ def calculate_metric_from_insights(insights: Dict, field: str) -> float:
         purchase_value = calculate_metric_from_insights(insights, "purchase_value")
         spend = safe_float(insights.get("spend"), 0)
         return purchase_value - spend
+    elif field == "contribution_total":
+        """
+        Contribution Total (alias for Media Margin Volume):
+          (Avg Order Value - Cost Per Purchase) × Purchases
+
+        Using Meta-native definitions:
+          AOV = purchase_value / purchase_count
+          CPP = spend / purchase_count   (or cost_per_action_type purchase)
+
+        This simplifies to:
+          contribution_total = purchase_value - spend
+        (when value & spend refer to the same time range and attribution settings)
+        """
+        purchase_value = calculate_metric_from_insights(insights, "purchase_value")
+        spend = safe_float(insights.get("spend"), 0)
+        return purchase_value - spend
     elif field == "daily_budget":
         # This comes from the object data, not insights
         return None
     return 0
 
 
-def evaluate_condition(item: Dict, insights: Dict, condition: Dict, campaign_status_cache: Dict[str, str] = None) -> Tuple[bool, Dict]:
+def evaluate_condition(item: Dict, insights: Dict, condition: Dict, campaign_status_cache: Dict[str, str] = None, adset_status_cache: Dict[str, str] = None) -> Tuple[bool, Dict]:
     """Evaluate a single condition against an item
 
     Args:
@@ -169,6 +198,7 @@ def evaluate_condition(item: Dict, insights: Dict, condition: Dict, campaign_sta
         insights: Insights data for the item
         condition: The condition to evaluate
         campaign_status_cache: Optional dict mapping campaign_id to campaign status
+        adset_status_cache: Optional dict mapping adset_id to adset status
     """
     field = condition.get("field")
     operator = condition.get("operator")
@@ -265,10 +295,6 @@ def evaluate_condition(item: Dict, insights: Dict, condition: Dict, campaign_sta
         "passed": False
     }
 
-    # Include threshold for CPP Winning Days
-    if field == "cpp_winning_days" and condition.get("threshold") is not None:
-        evaluation["threshold"] = condition.get("threshold")
-
     # Handle status field (from object data)
     if field == "status":
         actual_value = item.get("status") or item.get("effective_status")
@@ -294,6 +320,25 @@ def evaluate_condition(item: Dict, insights: Dict, condition: Dict, campaign_sta
                 evaluation["passed"] = False
         else:
             # No campaign_id or no cache available, condition fails
+            evaluation["actual_value"] = None
+            evaluation["passed"] = False
+
+    # Handle adset_status field (from ad set data, for ad-level rules)
+    elif field == "adset_status":
+        adset_id = item.get("adset_id")
+        if adset_id and adset_status_cache:
+            actual_value = adset_status_cache.get(str(adset_id))
+            evaluation["actual_value"] = actual_value
+            if actual_value is not None:
+                if operator == "=":
+                    evaluation["passed"] = str(actual_value) == str(expected_value)
+                elif operator == "!=":
+                    evaluation["passed"] = str(actual_value) != str(expected_value)
+            else:
+                # Ad set status not found in cache, condition fails
+                evaluation["passed"] = False
+        else:
+            # No adset_id or no cache available, condition fails
             evaluation["actual_value"] = None
             evaluation["passed"] = False
 
@@ -328,15 +373,6 @@ def evaluate_condition(item: Dict, insights: Dict, condition: Dict, campaign_sta
         else:
             evaluation["actual_value"] = None
 
-    # Handle cpp_winning_days (calculated from daily insights in service.py)
-    elif field == "cpp_winning_days":
-        # This is calculated in service.py and added to insights as "cpp_winning_days"
-        actual_value = insights.get("cpp_winning_days", 0)
-        if actual_value is None:
-            actual_value = 0
-
-        evaluation["actual_value"] = actual_value
-
     # Handle amount_of_active_ads (calculated in service.py)
     elif field == "amount_of_active_ads":
         # This is calculated in service.py and added to insights as "amount_of_active_ads"
@@ -366,32 +402,12 @@ def evaluate_condition(item: Dict, insights: Dict, condition: Dict, campaign_sta
 
         return evaluation["passed"], evaluation
 
-        # Compare winning days count with expected value
-        if actual_value is not None:
-            expected_value = float(expected_value)
-            if operator == ">":
-                evaluation["passed"] = actual_value > expected_value
-            elif operator == ">=":
-                evaluation["passed"] = actual_value >= expected_value
-            elif operator == "<":
-                evaluation["passed"] = actual_value < expected_value
-            elif operator == "<=":
-                evaluation["passed"] = actual_value <= expected_value
-            elif operator == "=":
-                evaluation["passed"] = abs(actual_value - expected_value) < 0.01  # Float comparison
-            elif operator == "!=":
-                evaluation["passed"] = abs(actual_value - expected_value) >= 0.01
-        else:
-            evaluation["passed"] = False
-
-        return evaluation["passed"], evaluation
-
     # Handle metrics from insights
     else:
         actual_value = calculate_metric_from_insights(insights, field)
 
-        # Attach detailed calculation for debugging Media Margin Volume
-        if field == "media_margin_volume":
+        # Attach detailed calculation for debugging Media Margin Volume / Contribution Total
+        if field == "media_margin_volume" or field == "contribution_total":
             spend = _safe_float_any(insights.get("spend"), 0.0)
 
             # Canonical purchase types (avoid double counting)
@@ -417,12 +433,12 @@ def evaluate_condition(item: Dict, insights: Dict, condition: Dict, campaign_sta
             cpp = calculate_metric_from_insights(insights, "cpp")
             aov = (purchase_value / purchase_count) if purchase_count > 0 else None
 
-            # Match the simplified backend definition: MMV = purchase_value - spend
-            mmv = purchase_value - spend
-            actual_value = mmv
+            # Match the simplified backend definition: contribution = purchase_value - spend
+            result_value = purchase_value - spend
+            actual_value = result_value
 
             evaluation["calculation_details"] = {
-                "metric": "media_margin_volume",
+                "metric": field,
                 "formula": "purchase_value - spend  (equivalent to (AOV - CPP) × Purchases when CPP=spend/purchases and AOV=value/purchases)",
                 "purchase_value": purchase_value,
                 "purchase_value_source": purchase_value_source,
@@ -434,7 +450,7 @@ def evaluate_condition(item: Dict, insights: Dict, condition: Dict, campaign_sta
                 "purchase_value_by_action_type": purchase_value_by_type,
                 "aov": aov,
                 "cpp": cpp,
-                "result": mmv,
+                "result": result_value,
                 "note": (
                     "If purchase_value is 0, verify Insights returns action_values for the selected time range/attribution."
                 ),

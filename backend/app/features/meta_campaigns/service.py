@@ -87,6 +87,132 @@ def reorder_folders(db: Session, ad_account_id: int, reorder_items: List[schemas
     return True
 
 
+def _generate_unique_folder_name(db: Session, ad_account_id: int, base_name: str) -> str:
+    """Generate a unique folder name by appending (copy) or (copy N) if needed"""
+    # Get all existing folder names for this account
+    existing_folders = db.query(models.RuleFolder.name).filter(
+        models.RuleFolder.ad_account_id == ad_account_id
+    ).all()
+    existing_names = {folder.name for folder in existing_folders}
+    
+    # If base name doesn't exist, use it
+    if base_name not in existing_names:
+        return base_name
+    
+    # Try "name (copy)"
+    copy_name = f"{base_name} (copy)"
+    if copy_name not in existing_names:
+        return copy_name
+    
+    # Try "name (copy 2)", "name (copy 3)", etc.
+    counter = 2
+    while True:
+        numbered_name = f"{base_name} (copy {counter})"
+        if numbered_name not in existing_names:
+            return numbered_name
+        counter += 1
+        # Safety limit to prevent infinite loop
+        if counter > 100:
+            raise ValueError("Too many folders with similar names")
+
+
+def export_folder_to_json(db: Session, folder_id: int):
+    """Export folder and its rules to a portable JSON format"""
+    # Get folder
+    folder = db.query(models.RuleFolder).filter(models.RuleFolder.id == folder_id).first()
+    if not folder:
+        raise ValueError("Folder not found")
+    
+    # Get all rules in folder
+    rules = db.query(models.CampaignRule).filter(
+        models.CampaignRule.folder_id == folder_id
+    ).order_by(models.CampaignRule.position).all()
+    
+    # Build export structure (excluding IDs and account-specific data)
+    export_data = {
+        "folder": {
+            "name": folder.name,
+        },
+        "rules": [
+            {
+                "name": rule.name,
+                "description": rule.description or "",
+                "enabled": rule.enabled,
+                "position": rule.position,
+                "schedule_cron": rule.schedule_cron or "",
+                "conditions": rule.conditions,  # JSON field
+                "actions": rule.actions,  # JSON field
+            }
+            for rule in rules
+        ],
+        "export_timestamp": datetime.now().isoformat(),
+        "version": "1.0",  # For future compatibility
+        "rules_count": len(rules),
+    }
+    
+    return export_data
+
+
+def import_folder_from_json(db: Session, ad_account_id: int, folder_json: dict):
+    """Import folder and rules from JSON"""
+    # Validate version compatibility
+    if folder_json.get("version") != "1.0":
+        raise ValueError("Unsupported JSON version")
+    
+    # Validate structure
+    if "folder" not in folder_json or "rules" not in folder_json:
+        raise ValueError("Invalid JSON structure: missing 'folder' or 'rules'")
+    
+    # Get max position for new folder
+    max_position = db.query(models.RuleFolder).filter(
+        models.RuleFolder.ad_account_id == ad_account_id
+    ).count()
+    
+    # Generate unique folder name
+    base_name = folder_json["folder"]["name"]
+    unique_name = _generate_unique_folder_name(db, ad_account_id, base_name)
+    
+    # Create folder
+    folder = models.RuleFolder(
+        ad_account_id=ad_account_id,
+        name=unique_name,
+        position=max_position,
+    )
+    db.add(folder)
+    db.flush()  # Get folder.id without committing
+    
+    # Create rules (import as DISABLED by default for safety)
+    rules_imported = 0
+    for rule_data in folder_json["rules"]:
+        try:
+            rule = models.CampaignRule(
+                ad_account_id=ad_account_id,
+                folder_id=folder.id,
+                name=rule_data["name"],
+                description=rule_data.get("description", ""),
+                enabled=False,  # Always import as disabled for safety
+                position=rule_data.get("position", 0),
+                schedule_cron=rule_data.get("schedule_cron") or None,
+                conditions=rule_data["conditions"],
+                actions=rule_data["actions"],
+            )
+            db.add(rule)
+            rules_imported += 1
+        except Exception as e:
+            # Log error but continue with other rules
+            print(f"Failed to import rule '{rule_data.get('name', 'unknown')}': {str(e)}")
+    
+    db.commit()
+    db.refresh(folder)
+    
+    return {
+        "folder_id": folder.id,
+        "folder_name": folder.name,
+        "rules_imported": rules_imported,
+        "rules_total": len(folder_json["rules"]),
+    }
+
+
 def reorder_rules(db: Session, ad_account_id: int, reorder_items: List[schemas.RuleReorderItem]):
     """Batch update rule positions and folder assignments"""
     for item in reorder_items:
@@ -154,6 +280,43 @@ def delete_rule(db: Session, rule_id: int):
     return True
 
 
+def get_all_logs(db: Session, limit: int = 100, offset: int = 0):
+    """Get all rule execution logs across all ad accounts with rule and account info"""
+    from sqlalchemy import desc
+    
+    logs = db.query(
+        models.RuleLog,
+        models.CampaignRule.name.label('rule_name'),
+        models.CampaignRule.ad_account_id,
+        models.AdAccount.name.label('ad_account_name')
+    ).join(
+        models.CampaignRule,
+        models.RuleLog.rule_id == models.CampaignRule.id
+    ).join(
+        models.AdAccount,
+        models.CampaignRule.ad_account_id == models.AdAccount.id
+    ).order_by(
+        desc(models.RuleLog.created_at)
+    ).limit(limit).offset(offset).all()
+    
+    # Format the results
+    result = []
+    for log, rule_name, ad_account_id, ad_account_name in logs:
+        result.append({
+            "id": log.id,
+            "rule_id": log.rule_id,
+            "rule_name": rule_name,
+            "ad_account_id": ad_account_id,
+            "ad_account_name": ad_account_name,
+            "status": log.status,
+            "message": log.message,
+            "details": log.details,
+            "created_at": log.created_at
+        })
+    
+    return result
+
+
 def get_rule_logs(db: Session, rule_id: int, limit: int = 100):
     return db.query(models.RuleLog).filter(
         models.RuleLog.rule_id == rule_id
@@ -189,13 +352,25 @@ def create_rule_log(db: Session, rule_id: int, status: str, message: str, detail
 # ----------------------------
 def test_rule(db: Session, rule_id: int):
     """Test a rule by fetching data, applying filters, and evaluating conditions"""
-    rule = get_rule(db, rule_id)
-    if not rule:
-        raise ValueError("Rule not found")
+    try:
+        rule = get_rule(db, rule_id)
+        if not rule:
+            raise ValueError("Rule not found")
 
-    if not rule.enabled:
-        create_rule_log(db, rule_id, "skipped", "Rule is disabled", {})
-        return {"message": "Rule is disabled", "rule_id": rule_id}
+        if not rule.enabled:
+            create_rule_log(db, rule_id, "skipped", "Rule is disabled", {})
+            return {"message": "Rule is disabled", "rule_id": rule_id}
+    except TypeError as e:
+        error_msg = f"TypeError in test_rule setup: {str(e)}"
+        logger.error(error_msg)
+        logger.error(f"Rule ID: {rule_id}")
+        create_rule_log(db, rule_id, "error", error_msg, {"error": str(e)})
+        raise
+    except Exception as e:
+        error_msg = f"Unexpected error in test_rule: {str(e)}"
+        logger.error(error_msg)
+        create_rule_log(db, rule_id, "error", error_msg, {"error": str(e)})
+        raise
 
     # Get ad account for credentials
     from app.features.meta_campaigns.models import AdAccount
@@ -219,9 +394,26 @@ def test_rule(db: Session, rule_id: int):
     conditions = rule.conditions
     rule_level = conditions.get("rule_level", "ad")
     # Include campaign-level scope filters
-    scope_filters = {k: v for k, v in conditions.items() if k in ["name_contains", "ids", "campaign_ids", "campaign_name_contains"]}
+    scope_filters = {k: v for k, v in conditions.items() if k in ["name_contains", "ids", "campaign_ids", "campaign_name_contains", "campaign_name_doesnt_contain"]}
     time_range = conditions.get("time_range", {})
-    rule_conditions = conditions.get("conditions", [])
+    
+    # Extract flat list of conditions from groups (backward compatible with old format)
+    if "condition_groups" in conditions:
+        # New format: flatten all conditions from all groups
+        rule_conditions = []
+        for group in conditions.get("condition_groups", []):
+            rule_conditions.extend(group.get("conditions", []))
+    else:
+        # Old format: flat conditions array
+        rule_conditions = conditions.get("conditions", [])
+
+    # API call counter to track performance
+    api_call_counter = {
+        "total": 0,
+        "fetch_items": 0,
+        "fetch_insights": 0,
+        "actions": 0
+    }
 
     log_details = {
         "timestamp": datetime.now().isoformat(),
@@ -235,7 +427,8 @@ def test_rule(db: Session, rule_id: int):
         "campaign_ids": conditions.get("campaign_ids"),
         "data_fetch": {},
         "filtered_data": [],
-        "evaluations": []
+        "evaluations": [],
+        "api_calls": api_call_counter
     }
 
     total_start_time = time.time()
@@ -246,13 +439,286 @@ def test_rule(db: Session, rule_id: int):
         """Create a hashable key from time range dict"""
         if not tr:
             return None
-        return (
-            tr.get("unit"),
-            tr.get("amount"),
-            tr.get("exclude_today", True)
-        )
+        
+        # Get values and ensure they're hashable (not lists)
+        unit = tr.get("unit")
+        amount = tr.get("amount")
+        exclude_today = tr.get("exclude_today", True)
+        
+        # Convert lists to tuples or take first element (defensive programming)
+        if isinstance(unit, list):
+            unit = unit[0] if unit else None
+        if isinstance(amount, list):
+            amount = amount[0] if amount else None
+        if isinstance(exclude_today, list):
+            exclude_today = exclude_today[0] if exclude_today else True
+            
+        return (unit, amount, exclude_today)
 
     try:
+        # Step 0.5: Pre-resolve campaign name filters (contains/doesn't contain) to campaign_ids for API-level filtering
+        # This dramatically reduces API calls by filtering at the source
+        has_campaign_name_contains = "campaign_name_contains" in scope_filters and scope_filters["campaign_name_contains"]
+        has_campaign_name_doesnt_contain = "campaign_name_doesnt_contain" in scope_filters and scope_filters["campaign_name_doesnt_contain"]
+        
+        if (has_campaign_name_contains or has_campaign_name_doesnt_contain) and rule_level in ["ad", "ad_set"]:
+            step_start_time = time.time()
+            logger.info(f"[TIMING] Step 0.5 - Pre-resolving campaign name filters for API optimization")
+            try:
+                # Fetch campaigns matching name pattern
+                base_url = "https://graph.facebook.com/v21.0"
+                account_id_formatted = f"act_{account_id}" if not account_id.startswith("act_") else account_id
+                
+                # Build filtering for existing campaign_ids if present
+                campaign_filtering = None
+                if "campaign_ids" in scope_filters and scope_filters["campaign_ids"]:
+                    existing_campaign_ids = scope_filters["campaign_ids"]
+                    if isinstance(existing_campaign_ids, str):
+                        existing_campaign_ids = [id_val.strip() for id_val in existing_campaign_ids.replace("\n", ",").split(",") if id_val.strip()]
+                    if isinstance(existing_campaign_ids, list) and existing_campaign_ids:
+                        campaign_filtering = json.dumps([{
+                            "field": "id",
+                            "operator": "IN",
+                            "value": existing_campaign_ids
+                        }])
+                        logger.info(f"Pre-filtering campaigns by existing campaign_ids: {len(existing_campaign_ids)} campaigns")
+                
+                all_campaigns = []
+                url = f"{base_url}/{account_id_formatted}/campaigns"
+                params = {
+                    "fields": "id,name",
+                    "limit": 2000,
+                    "access_token": access_token
+                }
+                if campaign_filtering:
+                    from urllib.parse import quote
+                    params["filtering"] = quote(campaign_filtering)
+                
+                while True:
+                    response = requests.get(url, params=params, timeout=30)
+                    response.raise_for_status()
+                    data = response.json()
+                    all_campaigns.extend(data.get("data", []))
+                    
+                    next_url = data.get("paging", {}).get("next")
+                    if not next_url:
+                        break
+                    url = next_url
+                    params = {}  # next_url already has all params
+                    time.sleep(0.3)
+                
+                # Start with all campaigns
+                matching_campaign_ids = [str(campaign.get("id")) for campaign in all_campaigns]
+                
+                # Apply positive filter (contains)
+                if has_campaign_name_contains:
+                    keywords_contains = scope_filters["campaign_name_contains"]
+                    if isinstance(keywords_contains, list) and keywords_contains:
+                        matching_campaign_ids = [
+                            str(campaign.get("id"))
+                            for campaign in all_campaigns
+                            if any(keyword.lower() in campaign.get("name", "").lower() for keyword in keywords_contains)
+                        ]
+                        logger.info(f"After campaign_name_contains: {len(matching_campaign_ids)} campaigns match (keywords: {keywords_contains})")
+                
+                # Apply negative filter (doesn't contain)
+                if has_campaign_name_doesnt_contain:
+                    keywords_doesnt_contain = scope_filters["campaign_name_doesnt_contain"]
+                    if isinstance(keywords_doesnt_contain, list) and keywords_doesnt_contain:
+                        # Filter OUT campaigns that contain any of these keywords
+                        matching_campaign_ids = [
+                            cid for cid in matching_campaign_ids
+                            if not any(
+                                keyword.lower() in next(
+                                    (c.get("name", "") for c in all_campaigns if str(c.get("id")) == cid),
+                                    ""
+                                ).lower()
+                                for keyword in keywords_doesnt_contain
+                            )
+                        ]
+                        logger.info(f"After campaign_name_doesnt_contain: {len(matching_campaign_ids)} campaigns remain (excluded keywords: {keywords_doesnt_contain})")
+                
+                step_elapsed = time.time() - step_start_time
+                logger.info(f"[TIMING] Step 0.5 completed in {step_elapsed:.2f} seconds - Resolved to {len(matching_campaign_ids)} campaigns (from {len(all_campaigns)} total)")
+                
+                if matching_campaign_ids:
+                    # Add resolved campaign IDs to scope_filters for API-level filtering
+                    scope_filters["campaign_ids"] = matching_campaign_ids
+                    logger.info(f"[OPTIMIZATION] Campaign name filters resolved to campaign_ids - will fetch only from {len(matching_campaign_ids)} campaigns")
+                    # Remove campaign_name filters to avoid re-processing
+                    if "campaign_name_contains" in scope_filters:
+                        del scope_filters["campaign_name_contains"]
+                    if "campaign_name_doesnt_contain" in scope_filters:
+                        del scope_filters["campaign_name_doesnt_contain"]
+                else:
+                    # No campaigns match, so result will be empty
+                    logger.info(f"[OPTIMIZATION] No campaigns match name filters - skipping data fetch")
+                    log_details["data_fetch"] = {"total_items": 0, "items": []}
+                    log_details["filtered_data"] = []
+                    log_details["evaluations"] = []
+                    log_details["decision"] = "skip"
+                    log_details["items_meeting_conditions_count"] = 0
+                    create_rule_log(db, rule_id, "skipped", "No campaigns match name filters", log_details)
+                    return {
+                        "message": "No campaigns match name filters",
+                        "rule_id": rule_id,
+                        "decision": "skip",
+                        "items_checked": 0,
+                        "items_meeting_conditions": 0,
+                        "log_details": log_details
+                    }
+            except Exception as e:
+                logger.warning(f"Error pre-resolving campaign name filters: {str(e)}. Falling back to post-fetch filtering.")
+        
+        # Step 0.6: Pre-resolve parent status conditions to IDs for API-level filtering
+        # This dramatically reduces API calls by only fetching items with active parents
+        has_campaign_status_condition = False
+        campaign_status_value = None
+        has_adset_status_condition = False
+        adset_status_value = None
+        
+        for cond in rule_conditions:
+            if cond.get("field") == "campaign_status" and cond.get("operator") == "=":
+                has_campaign_status_condition = True
+                campaign_status_value = cond.get("value")
+            elif cond.get("field") == "adset_status" and cond.get("operator") == "=":
+                has_adset_status_condition = True
+                adset_status_value = cond.get("value")
+        
+        if has_campaign_status_condition and campaign_status_value and rule_level in ["ad", "ad_set"]:
+            step_start_time = time.time()
+            logger.info(f"[TIMING] Step 0.6a - Pre-resolving campaign_status={campaign_status_value} to campaign_ids for API optimization")
+            base_url = "https://graph.facebook.com/v21.0"
+            account_id_formatted = f"act_{account_id}" if not account_id.startswith("act_") else account_id
+            
+            # Build filtering for campaign status
+            campaign_filtering = json.dumps([{
+                "field": "effective_status",
+                "operator": "IN",
+                "value": [campaign_status_value]
+            }])
+            
+            # If campaign_ids already set, filter by those too
+            if "campaign_ids" in scope_filters and scope_filters["campaign_ids"]:
+                existing_campaign_ids = scope_filters["campaign_ids"]
+                campaign_filtering = json.dumps([
+                    {"field": "effective_status", "operator": "IN", "value": [campaign_status_value]},
+                    {"field": "id", "operator": "IN", "value": existing_campaign_ids}
+                ])
+            
+            all_campaigns = []
+            url = f"{base_url}/{account_id_formatted}/campaigns"
+            params = {
+                "fields": "id",
+                "filtering": campaign_filtering,
+                "limit": 2000,
+                "access_token": access_token
+            }
+            
+            while True:
+                response = requests.get(url, params=params, timeout=30)
+                response.raise_for_status()
+                data = response.json()
+                all_campaigns.extend(data.get("data", []))
+                next_url = data.get("paging", {}).get("next")
+                if not next_url:
+                    break
+                url = next_url
+                params = {}
+                time.sleep(0.3)
+            
+            matching_campaign_ids = [str(c.get("id")) for c in all_campaigns]
+            step_elapsed = time.time() - step_start_time
+            logger.info(f"[TIMING] Step 0.6a completed in {step_elapsed:.2f} seconds - Found {len(matching_campaign_ids)} campaigns with status={campaign_status_value}")
+            
+            if matching_campaign_ids:
+                scope_filters["campaign_ids"] = matching_campaign_ids
+                logger.info(f"[OPTIMIZATION] campaign_status condition resolved to campaign_ids - will fetch only from {len(matching_campaign_ids)} campaigns")
+            else:
+                logger.info(f"[OPTIMIZATION] No campaigns with status={campaign_status_value} - skipping data fetch")
+                log_details["data_fetch"] = {"total_items": 0, "items": []}
+                log_details["filtered_data"] = []
+                log_details["evaluations"] = []
+                log_details["decision"] = "skip"
+                log_details["items_meeting_conditions_count"] = 0
+                create_rule_log(db, rule_id, "skipped", f"No campaigns with status={campaign_status_value}", log_details)
+                return {
+                    "message": f"No campaigns with status={campaign_status_value}",
+                    "rule_id": rule_id,
+                    "decision": "skip",
+                    "items_checked": 0,
+                    "items_meeting_conditions": 0,
+                    "log_details": log_details
+                }
+        
+        if has_adset_status_condition and adset_status_value and rule_level == "ad":
+            step_start_time = time.time()
+            logger.info(f"[TIMING] Step 0.6b - Pre-resolving adset_status={adset_status_value} for API optimization")
+            base_url = "https://graph.facebook.com/v21.0"
+            account_id_formatted = f"act_{account_id}" if not account_id.startswith("act_") else account_id
+            
+            # Build filtering for adset status
+            adset_filtering = json.dumps([{
+                "field": "effective_status",
+                "operator": "IN",
+                "value": [adset_status_value]
+            }])
+            
+            # If campaign_ids already set, filter by those too
+            if "campaign_ids" in scope_filters and scope_filters["campaign_ids"]:
+                existing_campaign_ids = scope_filters["campaign_ids"]
+                adset_filtering = json.dumps([
+                    {"field": "effective_status", "operator": "IN", "value": [adset_status_value]},
+                    {"field": "campaign.id", "operator": "IN", "value": existing_campaign_ids}
+                ])
+            
+            all_adsets = []
+            url = f"{base_url}/{account_id_formatted}/adsets"
+            params = {
+                "fields": "id,campaign_id",
+                "filtering": adset_filtering,
+                "limit": 2000,
+                "access_token": access_token
+            }
+            
+            while True:
+                response = requests.get(url, params=params, timeout=30)
+                response.raise_for_status()
+                data = response.json()
+                all_adsets.extend(data.get("data", []))
+                next_url = data.get("paging", {}).get("next")
+                if not next_url:
+                    break
+                url = next_url
+                params = {}
+                time.sleep(0.3)
+            
+            matching_adset_ids = [str(a.get("id")) for a in all_adsets]
+            step_elapsed = time.time() - step_start_time
+            logger.info(f"[TIMING] Step 0.6b completed in {step_elapsed:.2f} seconds - Found {len(matching_adset_ids)} adsets with status={adset_status_value}")
+            
+            if matching_adset_ids:
+                # For ads, we need to filter by adset_id, which we'll pass to the fetch function
+                # Store in scope_filters so it can be applied
+                scope_filters["adset_ids"] = matching_adset_ids
+                logger.info(f"[OPTIMIZATION] adset_status condition resolved to adset_ids - will fetch only from {len(matching_adset_ids)} adsets")
+            else:
+                logger.info(f"[OPTIMIZATION] No adsets with status={adset_status_value} - skipping data fetch")
+                log_details["data_fetch"] = {"total_items": 0, "items": []}
+                log_details["filtered_data"] = []
+                log_details["evaluations"] = []
+                log_details["decision"] = "skip"
+                log_details["items_meeting_conditions_count"] = 0
+                create_rule_log(db, rule_id, "skipped", f"No adsets with status={adset_status_value}", log_details)
+                return {
+                    "message": f"No adsets with status={adset_status_value}",
+                    "rule_id": rule_id,
+                    "decision": "skip",
+                    "items_checked": 0,
+                    "items_meeting_conditions": 0,
+                    "log_details": log_details
+                }
+        
         # Step 1: Fetch data from Facebook API
         step_start_time = time.time()
         logger.info(f"[TIMING] Step 1 - Fetching {rule_level} data for rule {rule_id} (rule: {rule.name})")
@@ -277,6 +743,7 @@ def test_rule(db: Session, rule_id: int):
             rule_level,
             scope_filters=scope_filters,
             effective_status_in=status_in,
+            api_call_counter=api_call_counter,
         )
         step_elapsed = time.time() - step_start_time
         logger.info(f"[TIMING] Step 1 completed in {step_elapsed:.2f} seconds - Fetched {len(all_data)} total {rule_level} items from Facebook API")
@@ -313,7 +780,14 @@ def test_rule(db: Session, rule_id: int):
         for idx, condition in enumerate(rule_conditions):
             # Get time range for this condition (fallback to global)
             condition_time_range = condition.get("time_range") or time_range
-            tr_key = time_range_key(condition_time_range)
+            
+            try:
+                tr_key = time_range_key(condition_time_range)
+            except TypeError as e:
+                logger.error(f"Error creating time_range_key for condition {idx}: {e}")
+                logger.error(f"Condition time_range: {condition_time_range}")
+                logger.error(f"Time range type: {type(condition_time_range)}")
+                raise
 
             if tr_key not in condition_groups:
                 condition_groups[tr_key] = {
@@ -322,32 +796,17 @@ def test_rule(db: Session, rule_id: int):
                 }
             condition_groups[tr_key]["condition_indices"].append(idx)
 
-        # Check if any condition uses cpp_winning_days (requires daily insights)
-        has_cpp_winning_days = any(
-            cond.get("field") == "cpp_winning_days" for cond in rule_conditions
-        )
-
         # Fetch insights for each unique time range
         insights_by_time_range = {}
-        daily_insights_by_time_range = {}  # For cpp_winning_days
         total_insights_fetched = 0
         for tr_key, group in condition_groups.items():
             group_time_range = group["time_range"]
             group_indices = group["condition_indices"]
             logger.info(f"[TIMING] Fetching insights for {len(group_indices)} condition(s) with time range: {group_time_range}")
 
-            group_insights = fetch_insights(account_id, access_token, rule_level, filtered_ids, group_time_range)
+            group_insights = fetch_insights(account_id, access_token, rule_level, filtered_ids, group_time_range, api_call_counter)
             insights_by_time_range[tr_key] = group_insights
             total_insights_fetched += len(group_insights)
-
-            # If any condition in this group uses cpp_winning_days, also fetch daily insights
-            group_has_cpp_winning_days = any(
-                rule_conditions[idx].get("field") == "cpp_winning_days" for idx in group_indices
-            )
-            if group_has_cpp_winning_days:
-                logger.info(f"[TIMING] Fetching daily insights for CPP Winning Days calculation with time range: {group_time_range}")
-                group_daily_insights = fetch_daily_insights(account_id, access_token, rule_level, filtered_ids, group_time_range)
-                daily_insights_by_time_range[tr_key] = group_daily_insights
 
             # Log insights summary for this time range
             insights_with_data = sum(1 for v in group_insights.values() if v and len(v) > 0)
@@ -367,14 +826,20 @@ def test_rule(db: Session, rule_id: int):
             "total_insights_fetched": total_insights_fetched
         }
 
-        # Step 4: Pre-fetch campaign statuses if needed (for ad/ad_set levels with campaign_status conditions)
+        # Step 4: Pre-fetch parent object statuses if needed
         step_start_time = time.time()
-        logger.info(f"[TIMING] Step 4 - Pre-fetching campaign statuses...")
+        logger.info(f"[TIMING] Step 4 - Pre-fetching parent object statuses...")
         campaign_status_cache = {}
+        adset_status_cache = {}
+        
         has_campaign_status_condition = any(
             cond.get("field") == "campaign_status" for cond in rule_conditions
         )
+        has_adset_status_condition = any(
+            cond.get("field") == "adset_status" for cond in rule_conditions
+        )
 
+        # Pre-fetch campaign statuses if needed (for ad/ad_set levels with campaign_status conditions)
         if has_campaign_status_condition and rule_level in ["ad", "ad_set"]:
             # Collect unique campaign IDs from filtered items
             campaign_ids = set()
@@ -420,13 +885,88 @@ def test_rule(db: Session, rule_id: int):
                 except Exception as e:
                     logger.warning(f"Error fetching campaign statuses: {str(e)}")
                     # Continue without campaign status cache - conditions will fail gracefully
+        
+        # Pre-fetch ad set statuses if needed (for ad-level rules with adset_status conditions)
+        if has_adset_status_condition and rule_level == "ad":
+            # Collect unique ad set IDs from filtered items
+            adset_ids = set()
+            for item in filtered_data:
+                adset_id = item.get("adset_id")
+                if adset_id:
+                    adset_ids.add(str(adset_id))
+
+            # Fetch ad set statuses if we have ad set IDs
+            if adset_ids:
+                try:
+                    base_url = "https://graph.facebook.com/v21.0"
+                    if not account_id.startswith("act_"):
+                        account_id_formatted = f"act_{account_id}"
+                    else:
+                        account_id_formatted = account_id
+
+                    # Fetch ad sets in batches using filtering (Facebook API supports up to 50 IDs per filter)
+                    batch_size = 50
+                    adset_ids_list = list(adset_ids)
+                    for i in range(0, len(adset_ids_list), batch_size):
+                        batch_ids = adset_ids_list[i:i + batch_size]
+                        # Build filtering JSON string for ad set IDs
+                        filtering = f"[{{\"field\":\"adset.id\",\"operator\":\"IN\",\"value\":[{','.join([f'\"{id_val}\"' for id_val in batch_ids])}]}}]"
+
+                        url = f"{base_url}/{account_id_formatted}/adsets"
+                        params = {
+                            "fields": "id,status,effective_status",
+                            "filtering": filtering,
+                            "limit": batch_size,
+                            "access_token": access_token
+                        }
+                        response = requests.get(url, params=params, timeout=30)
+                        if response.status_code == 200:
+                            data = response.json()
+                            adsets_data = data.get("data", [])
+                            for adset in adsets_data:
+                                adset_id = str(adset.get("id"))
+                                status = adset.get("status") or adset.get("effective_status")
+                                adset_status_cache[adset_id] = status
+                        else:
+                            logger.warning(f"Error fetching ad set statuses: {response.status_code} - {response.text}")
+                except Exception as e:
+                    logger.warning(f"Error fetching ad set statuses: {str(e)}")
+                    # Continue without ad set status cache - conditions will fail gracefully
+        
         step_elapsed = time.time() - step_start_time
-        logger.info(f"[TIMING] Step 4 completed in {step_elapsed:.2f} seconds - Campaign statuses cached: {len(campaign_status_cache)} campaigns")
+        logger.info(f"[TIMING] Step 4 completed in {step_elapsed:.2f} seconds - Campaign statuses cached: {len(campaign_status_cache)} campaigns, Adset statuses cached: {len(adset_status_cache)} ad sets")
+
+        # Helper function to normalize conditions to groups format
+        def normalize_conditions_to_groups(conditions_data):
+            """
+            Normalize conditions to condition_groups format.
+            Handles both old (flat) and new (grouped) formats.
+            """
+            # If already in new format
+            if "condition_groups" in conditions_data:
+                groups = conditions_data["condition_groups"]
+                # Generate simple indexed group_ids for logging
+                for idx, group in enumerate(groups):
+                    group["group_id"] = f"group_{idx + 1}"
+                return groups
+            
+            # If old format, wrap in single group
+            if "conditions" in conditions_data:
+                return [{
+                    "group_id": "group_1",
+                    "conditions": conditions_data["conditions"]
+                }]
+            
+            return []
 
         # Step 5: Evaluate conditions for each item
         step_start_time = time.time()
         logger.info(f"[TIMING] Step 5 - Evaluating conditions for {len(filtered_data)} items...")
         items_meeting_conditions = []
+
+        # Normalize conditions to groups
+        condition_groups = normalize_conditions_to_groups(rule.conditions)
+        logger.info(f"[EVAL] Evaluating {len(condition_groups)} condition group(s) with OR logic between groups")
 
         for item in filtered_data:
             item_id = item.get("id")
@@ -434,148 +974,104 @@ def test_rule(db: Session, rule_id: int):
             item_evaluation = {
                 "item_id": item_id,
                 "item_name": item.get("name"),
-                "conditions_evaluated": [],
-                "all_conditions_met": False
+                "condition_groups": [],
+                "any_group_passed": False,
+                "passed_group_ids": []
             }
 
-            # Evaluate all conditions
-            all_passed = True
-            for condition in rule_conditions:
-                # Get the time range for this condition (fallback to global)
-                condition_time_range = condition.get("time_range") or time_range
-                tr_key = time_range_key(condition_time_range)
+            # Evaluate each group (OR logic between groups)
+            any_group_passed = False
+            passed_group_ids = []
 
-                # Get insights for this condition's time range
-                condition_insights = insights_by_time_range.get(tr_key, {}).get(item_id, {})
-
-                # Initialize variables for CPP winning days breakdown
-                cpp_winning_days_breakdown = []
-                cpp_winning_days_total_days = 0
-
-                # Handle CPP Winning Days - calculate from daily insights
-                if condition.get("field") == "cpp_winning_days":
-                    threshold = condition.get("threshold")
-                    if threshold is None:
-                        logger.warning(f"CPP Winning Days condition missing threshold, skipping")
-                        item_evaluation["conditions_evaluated"].append({
-                            "field": "cpp_winning_days",
-                            "operator": condition.get("operator"),
-                            "expected_value": condition.get("value"),
-                            "actual_value": None,
-                            "passed": False,
-                            "error": "Threshold not specified"
-                        })
-                        all_passed = False
-                        continue
-
-                    # Get daily insights for this time range
-                    daily_insights_list = daily_insights_by_time_range.get(tr_key, {}).get(item_id, [])
-
-                    # Calculate winning days (days where CPP < threshold)
-                    # A "winning day" is a day where CPP was below the threshold
-                    winning_days = 0
-                    daily_cpp_breakdown = []  # For detailed logging and UI display
-                    for daily_insight in daily_insights_list:
-                        # Calculate CPP for this day
-                        daily_cpp = calculate_metric_from_insights(daily_insight, "cpp")
-                        date_start = daily_insight.get("date_start", "unknown")
-                        spend = daily_insight.get("spend", 0)
-                        actions = daily_insight.get("actions", [])
-                        cost_per_action_type = daily_insight.get("cost_per_action_type", [])
-
-                        # Count days where CPP is calculated (not None), greater than 0 (has purchases), and less than threshold
-                        # If CPP is 0 or None, it means no purchases occurred, so skip that day
-                        # Only count days with actual purchases (CPP > 0) that are below the threshold
-                        is_winning = False
-                        if daily_cpp is not None and daily_cpp > 0 and daily_cpp < threshold:
-                            winning_days += 1
-                            is_winning = True
-
-                        # Store detailed breakdown for logging and evaluation
-                        daily_cpp_breakdown.append({
-                            "date": date_start,
-                            "cpp": daily_cpp,
-                            "spend": spend,
-                            "is_winning": is_winning,
-                            "actions": actions,
-                            "cost_per_action_type": cost_per_action_type
-                        })
-
-                    # Add winning days count to insights as a synthetic metric
-                    if not condition_insights:
-                        condition_insights = {}
-                    condition_insights["cpp_winning_days"] = winning_days
-
-                    # Log detailed breakdown
-                    breakdown_parts = []
-                    for d in daily_cpp_breakdown:
-                        cpp_str = f"${d['cpp']:.2f}" if d['cpp'] is not None else "N/A"
-                        winning_str = " (WINNING)" if d['is_winning'] else ""
-                        breakdown_parts.append(f"{d['date']}: CPP={cpp_str}{winning_str}")
-                    breakdown_str = ", ".join(breakdown_parts)
-                    logger.info(f"Item {item_id}: Calculated {winning_days} winning days (CPP < {threshold}) from {len(daily_insights_list)} daily insights")
-                    logger.info(f"Item {item_id} daily CPP breakdown: {breakdown_str}")
-
-                    # Store breakdown for later use in evaluation
-                    cpp_winning_days_breakdown = daily_cpp_breakdown
-                    cpp_winning_days_total_days = len(daily_insights_list)
-
-                # Handle Amount of Active Ads - fetch and count active ads
-                if condition.get("field") == "amount_of_active_ads":
-                    # Determine what to count based on rule level
-                    if rule_level == "campaign":
-                        # Count ads in this campaign
-                        ads = fetch_ads_for_item(account_id, access_token, item_id, "campaign")
-                    elif rule_level == "ad_set":
-                        # Count ads in this adset
-                        ads = fetch_ads_for_item(account_id, access_token, item_id, "adset")
-                    elif rule_level == "ad":
-                        # Count ads in the parent adset
-                        adset_id = item.get("adset_id")
-                        if adset_id:
-                            ads = fetch_ads_for_item(account_id, access_token, adset_id, "adset")
-                        else:
-                            logger.warning(f"Ad {item_id} has no adset_id, cannot count active ads")
-                            ads = []
-                    else:
-                        ads = []
-
-                    # Count ads with ACTIVE status
-                    active_ads_count = 0
-                    for ad in ads:
-                        status = ad.get("status") or ad.get("effective_status")
-                        if status == "ACTIVE":
-                            active_ads_count += 1
-
-                    # Add count to insights as a synthetic metric
-                    if not condition_insights:
-                        condition_insights = {}
-                    condition_insights["amount_of_active_ads"] = active_ads_count
-                    logger.info(f"Item {item_id}: Counted {active_ads_count} active ads out of {len(ads)} total ads")
-
-                # Log which time range was used for this condition
-                time_range_used = condition_time_range if condition.get("time_range") else "global"
-                evaluation_context = {
-                    "time_range_used": time_range_used,
-                    "time_range_key": str(tr_key) if tr_key else "global"
+            for group_idx, group in enumerate(condition_groups):
+                group_id = group.get("group_id", f"group_{group_idx + 1}")
+                group_conditions = group.get("conditions", [])
+                
+                group_evaluation = {
+                    "group_id": group_id,
+                    "conditions_evaluated": [],
+                    "all_conditions_passed": True
                 }
+                
+                logger.debug(f"[EVAL] Evaluating group {group_id} with {len(group_conditions)} condition(s)")
+                
+                # Evaluate all conditions in this group (AND logic)
+                for condition in group_conditions:
+                    # Get the time range for this condition (fallback to global)
+                    condition_time_range = condition.get("time_range") or time_range
+                    
+                    try:
+                        tr_key = time_range_key(condition_time_range)
+                    except TypeError as e:
+                        logger.error(f"Error creating time_range_key in evaluation: {e}")
+                        logger.error(f"Condition time_range: {condition_time_range}")
+                        raise
 
-                passed, evaluation = evaluate_condition(item, condition_insights, condition, campaign_status_cache)
-                evaluation["time_range_used"] = time_range_used
+                    # Get insights for this condition's time range
+                    condition_insights = insights_by_time_range.get(tr_key, {}).get(item_id, {})
 
-                # Add CPP winning days breakdown to evaluation if this was a cpp_winning_days condition
-                if condition.get("field") == "cpp_winning_days":
-                    evaluation["cpp_winning_days_breakdown"] = cpp_winning_days_breakdown
-                    evaluation["cpp_winning_days_total_days"] = cpp_winning_days_total_days
-                item_evaluation["conditions_evaluated"].append(evaluation)
-                if not passed:
-                    all_passed = False
+                    # Handle Amount of Active Ads - fetch and count active ads
+                    if condition.get("field") == "amount_of_active_ads":
+                        # Determine what to count based on rule level
+                        if rule_level == "campaign":
+                            # Count ads in this campaign
+                            ads = fetch_ads_for_item(account_id, access_token, item_id, "campaign")
+                        elif rule_level == "ad_set":
+                            # Count ads in this adset
+                            ads = fetch_ads_for_item(account_id, access_token, item_id, "adset")
+                        elif rule_level == "ad":
+                            # Count ads in the parent adset
+                            adset_id = item.get("adset_id")
+                            if adset_id:
+                                ads = fetch_ads_for_item(account_id, access_token, adset_id, "adset")
+                            else:
+                                logger.warning(f"Ad {item_id} has no adset_id, cannot count active ads")
+                                ads = []
+                        else:
+                            ads = []
 
-            item_evaluation["all_conditions_met"] = all_passed
+                        # Count ads with ACTIVE status
+                        active_ads_count = 0
+                        for ad in ads:
+                            status = ad.get("status") or ad.get("effective_status")
+                            if status == "ACTIVE":
+                                active_ads_count += 1
+
+                        # Add count to insights as a synthetic metric
+                        if not condition_insights:
+                            condition_insights = {}
+                        condition_insights["amount_of_active_ads"] = active_ads_count
+                        logger.info(f"Item {item_id}: Counted {active_ads_count} active ads out of {len(ads)} total ads")
+
+                    # Log which time range was used for this condition
+                    time_range_used = condition_time_range if condition.get("time_range") else "global"
+
+                    passed, evaluation = evaluate_condition(item, condition_insights, condition, campaign_status_cache, adset_status_cache)
+                    evaluation["time_range_used"] = time_range_used
+
+                    group_evaluation["conditions_evaluated"].append(evaluation)
+                    if not passed:
+                        group_evaluation["all_conditions_passed"] = False
+                
+                item_evaluation["condition_groups"].append(group_evaluation)
+                
+                # If this group passed, mark it (OR logic)
+                if group_evaluation["all_conditions_passed"]:
+                    any_group_passed = True
+                    passed_group_ids.append(group_id)
+                    logger.debug(f"[EVAL] Group {group_id} PASSED for item {item_id}")
+                    # Performance optimization: break early since we only need one group to pass
+                    break
+                else:
+                    logger.debug(f"[EVAL] Group {group_id} FAILED for item {item_id}")
+
+            item_evaluation["any_group_passed"] = any_group_passed
+            item_evaluation["passed_group_ids"] = passed_group_ids
             log_details["evaluations"].append(item_evaluation)
 
-            if all_passed:
+            if any_group_passed:
                 items_meeting_conditions.append(item)
+                logger.info(f"[EVAL] Item {item_id} ({item.get('name')}) met conditions via group(s): {passed_group_ids}")
         step_elapsed = time.time() - step_start_time
         logger.info(f"[TIMING] Step 5 completed in {step_elapsed:.2f} seconds - {len(items_meeting_conditions)} item(s) met all conditions out of {len(filtered_data)} evaluated")
 
@@ -599,7 +1095,8 @@ def test_rule(db: Session, rule_id: int):
                     account_id, access_token, rule_level,
                     items_meeting_conditions, action,
                     slack_webhook_url=slack_webhook_url,
-                    rule_name=rule.name
+                    rule_name=rule.name,
+                    api_call_counter=api_call_counter
                 )
                 actions_executed.extend(action_results)
         step_elapsed = time.time() - step_start_time
@@ -615,10 +1112,20 @@ def test_rule(db: Session, rule_id: int):
             message = f"Test completed: {len(items_meeting_conditions)} item(s) meet all conditions"
         status = "success" if decision == "proceed" else "skipped"
 
+        # Add items_checked to log_details so it's persisted in the database
+        log_details["items_checked"] = len(filtered_data)
+
         total_elapsed = time.time() - total_start_time
         logger.info(f"[TIMING] === Rule execution completed in {total_elapsed:.2f} seconds total ===")
+        logger.info(f"[API CALLS] Total: {api_call_counter['total']}, Fetch Items: {api_call_counter['fetch_items']}, Fetch Insights: {api_call_counter['fetch_insights']}, Actions: {api_call_counter['actions']}")
+        logger.info(f"[DEBUG] log_details keys: {log_details.keys()}")
+        logger.info(f"[DEBUG] api_calls in log_details: {log_details.get('api_calls')}")
 
         create_rule_log(db, rule_id, status, message, log_details)
+
+        # Update last_run_at timestamp for manual test runs
+        rule.last_run_at = datetime.now()
+        db.commit()
 
         return {
             "message": message,

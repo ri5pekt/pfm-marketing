@@ -12,9 +12,7 @@ export const specialValues = {
         { label: "Lifetime Budget", value: "__lifetime_budget__", description: "Adset's lifetime budget" },
         { label: "Current Spend", value: "__current_spend__", description: "Current spend in time range" },
     ],
-    campaign: [
-        { label: "Current Spend", value: "__current_spend__", description: "Current spend in time range" }
-    ],
+    campaign: [{ label: "Current Spend", value: "__current_spend__", description: "Current spend in time range" }],
 };
 
 /**
@@ -26,8 +24,8 @@ export function isSpecialValue(value) {
         typeof value === "string"
             ? value
             : typeof value === "object" && typeof value.base === "string"
-            ? value.base
-            : null;
+              ? value.base
+              : null;
     return !!base && String(base).startsWith("__") && String(base).endsWith("__");
 }
 
@@ -115,9 +113,10 @@ export function isNumericField(field) {
         "cpc",
         "cpm",
         "roas",
+        "aov",
         "daily_budget",
+        "contribution_total",
         "media_margin_volume",
-        "cpp_winning_days",
         "amount_of_active_ads",
     ];
     return numericFields.includes(field);
@@ -142,6 +141,6 @@ export const scopeTypeOptions = [
     { label: "Name contains", value: "name_contains" },
     { label: "IDs", value: "ids" },
     { label: "Campaign Name contains", value: "campaign_name_contains" },
+    { label: "Campaign Name doesn't contain", value: "campaign_name_doesnt_contain" },
     { label: "Campaign IDs", value: "campaign_ids" },
 ];
-

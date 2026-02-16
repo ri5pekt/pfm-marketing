@@ -21,6 +21,10 @@ export async function deleteRule(ruleId) {
     return await del(`/app/meta-campaigns/rules/${ruleId}`);
 }
 
+export async function getAllLogs({ limit = 100, offset = 0 } = {}) {
+    return await get(`/app/meta-campaigns/logs?limit=${limit}&offset=${offset}`);
+}
+
 export async function getRuleLogs(ruleId) {
     return await get(`/app/meta-campaigns/rules/${ruleId}/logs`);
 }
@@ -55,9 +59,23 @@ export async function reorderFolders(adAccountId, items) {
         ad_account_id: adAccountId,
         items,
     });
-}export async function reorderRules(adAccountId, items) {
+}
+
+export async function reorderRules(adAccountId, items) {
     return await post("/app/meta-campaigns/rules/reorder", {
         ad_account_id: adAccountId,
         items,
+    });
+}
+
+// Folder export/import
+export async function exportFolder(folderId) {
+    return await get(`/app/meta-campaigns/folders/${folderId}/export`);
+}
+
+export async function importFolder(adAccountId, folderJson) {
+    return await post("/app/meta-campaigns/folders/import", {
+        ad_account_id: adAccountId,
+        folder_json: folderJson,
     });
 }

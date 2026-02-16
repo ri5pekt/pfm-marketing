@@ -2,7 +2,7 @@
     <div class="condition-time-range">
         <div class="time-range-header">
             <div class="flex align-items-center gap-2">
-                <InputSwitch
+                <ToggleSwitch
                     :modelValue="useCustomTimeRange"
                     @update:modelValue="$emit('toggle-custom', $event)"
                     :inputId="`useCustomTimeRange-${conditionIndex}`"
@@ -45,7 +45,7 @@
             </div>
             <div class="field">
                 <div class="flex align-items-center gap-2">
-                    <InputSwitch
+                    <ToggleSwitch
                         :modelValue="timeRange.exclude_today"
                         @update:modelValue="$emit('update-time-range', 'exclude_today', $event)"
                         :inputId="`conditionExcludeToday-${conditionIndex}`"
@@ -67,7 +67,7 @@
 <script setup>
 import Select from "primevue/select";
 import InputNumber from "primevue/inputnumber";
-import InputSwitch from "primevue/inputswitch";
+import ToggleSwitch from "primevue/toggleswitch";
 
 defineProps({
     conditionIndex: {

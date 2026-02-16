@@ -38,6 +38,14 @@
                     v-tooltip.top="'Rename'"
                 />
                 <Button
+                    icon="pi pi-copy"
+                    severity="info"
+                    text
+                    size="small"
+                    @click.stop="$emit('copy-folder-json', folder.id)"
+                    v-tooltip.top="'Copy Folder as JSON'"
+                />
+                <Button
                     icon="pi pi-trash"
                     severity="danger"
                     text
@@ -110,6 +118,7 @@ const emit = defineEmits([
     'save-edit',
     'cancel-edit',
     'delete-folder',
+    'copy-folder-json',
     'folder-drag-enter',
     'folder-drag-over',
     'folder-drag-leave',

@@ -6,12 +6,14 @@
         </div>
     </div>
     <router-view v-else />
+    <Toast position="top-right" />
 </template>
 
 <script setup>
 import { ref, onMounted, watch } from "vue";
 import { useAuthStore } from "@/store/authStore";
 import ProgressSpinner from "primevue/progressspinner";
+import Toast from "primevue/toast";
 
 const authStore = useAuthStore();
 const appLoading = ref(true);

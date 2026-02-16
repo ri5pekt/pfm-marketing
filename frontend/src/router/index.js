@@ -4,6 +4,7 @@ import LoginView from "@/views/LoginView.vue";
 import AppShell from "@/views/AppShell.vue";
 import DashboardView from "@/views/DashboardView.vue";
 import MetaCampaignsView from "@/views/MetaCampaignsView.vue";
+import MetaCampaignsLogsView from "@/views/MetaCampaignsLogsView.vue";
 import RuleEditorView from "@/views/RuleEditorView.vue";
 
 const routes = [
@@ -27,6 +28,11 @@ const routes = [
                 path: "/meta-campaigns",
                 name: "meta-campaigns",
                 component: MetaCampaignsView,
+            },
+            {
+                path: "/meta-campaigns/logs",
+                name: "meta-campaigns-logs",
+                component: MetaCampaignsLogsView,
             },
             {
                 path: "/meta-campaigns/rules/new",

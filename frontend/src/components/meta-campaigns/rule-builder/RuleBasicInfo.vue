@@ -22,7 +22,7 @@
         </div>
         <div v-if="modelValue.ruleLevel" class="field">
             <div class="flex align-items-center gap-2">
-                <InputSwitch
+                <ToggleSwitch
                     :modelValue="modelValue.enabled"
                     @update:modelValue="update('enabled', $event)"
                     inputId="enabled"
@@ -36,7 +36,7 @@
 <script setup>
 import InputText from "primevue/inputtext";
 import Textarea from "primevue/textarea";
-import InputSwitch from "primevue/inputswitch";
+import ToggleSwitch from "primevue/toggleswitch";
 
 const props = defineProps({
     modelValue: {

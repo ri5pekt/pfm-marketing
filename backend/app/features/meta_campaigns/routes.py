@@ -92,6 +92,17 @@ def delete_rule(
     return {"message": "Rule deleted successfully"}
 
 
+@router.get("/logs")
+def get_all_logs(
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get all rule execution logs across all ad accounts (for admin monitoring)"""
+    return service.get_all_logs(db, limit=limit, offset=offset)
+
+
 @router.get("/rules/{rule_id}/logs", response_model=list[schemas.RuleLog])
 def get_rule_logs(
     rule_id: int,
@@ -174,6 +185,38 @@ def delete_folder(
     if not success:
         raise HTTPException(status_code=404, detail="Folder not found")
     return {"message": "Folder deleted successfully"}
+
+
+@router.get("/folders/{folder_id}/export")
+def export_folder(
+    folder_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Export folder structure with all rules as JSON"""
+    try:
+        export_data = service.export_folder_to_json(db, folder_id)
+        return export_data
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to export folder: {str(e)}")
+
+
+@router.post("/folders/import")
+def import_folder(
+    request: schemas.FolderImportRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Import folder structure with rules from JSON"""
+    try:
+        result = service.import_folder_from_json(db, request.ad_account_id, request.folder_json)
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to import folder: {str(e)}")
 
 
 @router.post("/folders/reorder")

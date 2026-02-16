@@ -42,6 +42,20 @@ def send_slack_notification(webhook_url: str, rule_name: str, action_type: str, 
             new_budget = result.get("new_budget")
             if old_budget is not None and new_budget is not None:
                 action_display = f"Budget Adjusted: ${old_budget:.2f} → ${new_budget:.2f}"
+        elif action_type == "append_to_name":
+            old_name = result.get("old_name", "")
+            new_name = result.get("new_name", "")
+            if old_name and new_name and old_name != new_name:
+                action_display = f"Name Updated: {old_name} → {new_name}"
+            else:
+                action_display = f"Name Append: {result.get('message', '')}"
+        elif action_type == "remove_from_name":
+            old_name = result.get("old_name", "")
+            new_name = result.get("new_name", "")
+            if old_name and new_name and old_name != new_name:
+                action_display = f"Name Updated: {old_name} → {new_name}"
+            else:
+                action_display = f"Name Remove: {result.get('message', '')}"
         elif action_type == "send_notification":
             action_display = "Notification: Rule conditions met"
 
@@ -101,7 +115,7 @@ def send_slack_notification(webhook_url: str, rule_name: str, action_type: str, 
         return False
 
 
-def execute_action(account_id: str, access_token: str, rule_level: str, items: List[Dict], action: Dict, slack_webhook_url: str = None, rule_name: str = None) -> List[Dict]:
+def execute_action(account_id: str, access_token: str, rule_level: str, items: List[Dict], action: Dict, slack_webhook_url: str = None, rule_name: str = None, api_call_counter: Dict[str, int] = None) -> List[Dict]:
     """
     Execute an action on items via Meta API.
     Returns a list of action results with success/failure status.
@@ -131,6 +145,12 @@ def execute_action(account_id: str, access_token: str, rule_level: str, items: L
                     "access_token": access_token
                 }
                 response = requests.post(url, params=params, timeout=30)
+                
+                # Track API call
+                if api_call_counter is not None:
+                    api_call_counter["total"] += 1
+                    api_call_counter["actions"] += 1
+                
                 response.raise_for_status()
                 check_rate_limit_headers(response, "write", account_id=account_id)
                 result["success"] = True
@@ -144,6 +164,12 @@ def execute_action(account_id: str, access_token: str, rule_level: str, items: L
                     url = f"{base_url}/{item_id}"
                     params = {"fields": "daily_budget", "access_token": access_token}
                     get_response = requests.get(url, params=params, timeout=30)
+                    
+                    # Track API call
+                    if api_call_counter is not None:
+                        api_call_counter["total"] += 1
+                        api_call_counter["actions"] += 1
+                    
                     get_response.raise_for_status()
                     check_rate_limit_headers(get_response, "read", account_id=account_id)
                     adset_data = get_response.json()
@@ -172,6 +198,12 @@ def execute_action(account_id: str, access_token: str, rule_level: str, items: L
                                 "access_token": access_token
                             }
                             response = requests.post(url, params=params, timeout=30)
+                            
+                            # Track API call
+                            if api_call_counter is not None:
+                                api_call_counter["total"] += 1
+                                api_call_counter["actions"] += 1
+                            
                             response.raise_for_status()
                             check_rate_limit_headers(response, "write")
                             result["success"] = True
@@ -196,6 +228,12 @@ def execute_action(account_id: str, access_token: str, rule_level: str, items: L
                                 "access_token": access_token
                             }
                             response = requests.post(url, params=params, timeout=30)
+                            
+                            # Track API call
+                            if api_call_counter is not None:
+                                api_call_counter["total"] += 1
+                                api_call_counter["actions"] += 1
+                            
                             response.raise_for_status()
                             check_rate_limit_headers(response, "write")
                             result["success"] = True
@@ -208,6 +246,82 @@ def execute_action(account_id: str, access_token: str, rule_level: str, items: L
                     result["message"] = "Budget adjustment only available for ad sets"
                     result["error"] = "Invalid rule level for budget adjustment"
                     logger.warning(f"Budget adjustment attempted on {rule_level} {item_id}, but only ad sets support budget adjustment")
+
+            elif action_type == "append_to_name":
+                # Append text to the end of the item's name
+                text_to_append = action.get("text", "")
+                if not text_to_append:
+                    result["success"] = False
+                    result["message"] = "No text specified to append"
+                    result["error"] = "Missing 'text' parameter"
+                    logger.warning(f"Append to name action missing 'text' parameter for {rule_level} {item_id}")
+                else:
+                    # Check if text is already in the name to avoid duplicates
+                    if text_to_append in item_name:
+                        result["success"] = True
+                        result["message"] = f"Text already present in name: {item_name}"
+                        result["old_name"] = item_name
+                        result["new_name"] = item_name
+                        logger.info(f"Text '{text_to_append}' already present in {rule_level} {item_id} name, skipping")
+                    else:
+                        new_name = item_name + text_to_append
+                        url = f"{base_url}/{item_id}"
+                        params = {
+                            "name": new_name,
+                            "access_token": access_token
+                        }
+                        response = requests.post(url, params=params, timeout=30)
+                        
+                        # Track API call
+                        if api_call_counter is not None:
+                            api_call_counter["total"] += 1
+                            api_call_counter["actions"] += 1
+                        
+                        response.raise_for_status()
+                        check_rate_limit_headers(response, "write", account_id=account_id)
+                        result["success"] = True
+                        result["message"] = f"Appended '{text_to_append}' to name"
+                        result["old_name"] = item_name
+                        result["new_name"] = new_name
+                        logger.info(f"Successfully appended '{text_to_append}' to {rule_level} {item_id} name: {item_name} -> {new_name}")
+
+            elif action_type == "remove_from_name":
+                # Remove text from the item's name
+                text_to_remove = action.get("text", "")
+                if not text_to_remove:
+                    result["success"] = False
+                    result["message"] = "No text specified to remove"
+                    result["error"] = "Missing 'text' parameter"
+                    logger.warning(f"Remove from name action missing 'text' parameter for {rule_level} {item_id}")
+                else:
+                    # Check if text is in the name
+                    if text_to_remove not in item_name:
+                        result["success"] = True
+                        result["message"] = f"Text not found in name: {item_name}"
+                        result["old_name"] = item_name
+                        result["new_name"] = item_name
+                        logger.info(f"Text '{text_to_remove}' not found in {rule_level} {item_id} name, skipping")
+                    else:
+                        new_name = item_name.replace(text_to_remove, "")
+                        url = f"{base_url}/{item_id}"
+                        params = {
+                            "name": new_name,
+                            "access_token": access_token
+                        }
+                        response = requests.post(url, params=params, timeout=30)
+                        
+                        # Track API call
+                        if api_call_counter is not None:
+                            api_call_counter["total"] += 1
+                            api_call_counter["actions"] += 1
+                        
+                        response.raise_for_status()
+                        check_rate_limit_headers(response, "write", account_id=account_id)
+                        result["success"] = True
+                        result["message"] = f"Removed '{text_to_remove}' from name"
+                        result["old_name"] = item_name
+                        result["new_name"] = new_name
+                        logger.info(f"Successfully removed '{text_to_remove}' from {rule_level} {item_id} name: {item_name} -> {new_name}")
 
             elif action_type == "send_notification":
                 # Send notification action - no API call, just notification
@@ -253,10 +367,12 @@ def execute_action(account_id: str, access_token: str, rule_level: str, items: L
             else:
                 send_slack_notification(slack_webhook_url, rule_name, action_type, result)
 
-        # Add delay between API calls to avoid rate limiting (except after the last item)
+        # Add delay between items (except after the last item)
         if index < len(items) - 1:
-            time.sleep(WRITE_DELAY)
-            logger.debug(f"Waiting {WRITE_DELAY}s before processing next item to avoid rate limiting")
+            # Use smaller delay for notification-only actions, full delay for Meta API calls
+            delay = 0.1 if action_type == "send_notification" else WRITE_DELAY
+            time.sleep(delay)
+            logger.debug(f"Waiting {delay}s before processing next item")
 
     return results
 

@@ -50,7 +50,7 @@
                         <!-- Name contains -->
                         <div v-if="scope.type === 'name_contains'" class="field">
                             <label>Keywords *</label>
-                            <Chips
+                            <InputChips
                                 :modelValue="scope.value"
                                 @update:modelValue="updateScopeValue(index, $event)"
                                 placeholder="Type keyword and press Enter to add"
@@ -99,7 +99,7 @@
                                 }}
                                 *</label
                             >
-                            <Chips
+                            <InputChips
                                 :modelValue="scope.value"
                                 @update:modelValue="updateScopeValue(index, $event)"
                                 placeholder="Type ID and press Enter to add"
@@ -138,7 +138,47 @@
                         <!-- Campaign Name contains -->
                         <div v-else-if="scope.type === 'campaign_name_contains'" class="field">
                             <label>Keywords *</label>
-                            <Chips
+                            <InputChips
+                                :modelValue="scope.value"
+                                @update:modelValue="updateScopeValue(index, $event)"
+                                placeholder="Type keyword and press Enter to add"
+                                class="w-full"
+                                :class="{
+                                    'p-invalid':
+                                        errors.scopeFilters &&
+                                        (!Array.isArray(scope.value) || scope.value.length === 0),
+                                }"
+                                @add="() => { if (errors.scopeFilters) emit('clearScopeError'); }"
+                                @remove="() => {}"
+                            />
+                            <small
+                                v-if="
+                                    errors.scopeFilters &&
+                                    (!Array.isArray(scope.value) || scope.value.length === 0)
+                                "
+                                class="p-error"
+                            >
+                                Please add at least one keyword by typing and pressing Enter
+                            </small>
+                            <small v-else class="p-text-secondary"
+                                >Type a keyword and press Enter to add it</small
+                            >
+                            <small
+                                v-if="
+                                    scope.value &&
+                                    Array.isArray(scope.value) &&
+                                    scope.value.length > 0
+                                "
+                                class="p-text-secondary mt-1 block"
+                            >
+                                Added keywords ({{ scope.value.length }}):
+                                {{ scope.value.join(", ") }}
+                            </small>
+                        </div>
+                        <!-- Campaign Name doesn't contain -->
+                        <div v-else-if="scope.type === 'campaign_name_doesnt_contain'" class="field">
+                            <label>Keywords *</label>
+                            <InputChips
                                 :modelValue="scope.value"
                                 @update:modelValue="updateScopeValue(index, $event)"
                                 placeholder="Type keyword and press Enter to add"
@@ -178,7 +218,7 @@
                         <!-- Campaign IDs -->
                         <div v-else-if="scope.type === 'campaign_ids'" class="field">
                             <label>Campaign IDs *</label>
-                            <Chips
+                            <InputChips
                                 :modelValue="scope.value"
                                 @update:modelValue="updateScopeValue(index, $event)"
                                 placeholder="Type campaign ID and press Enter to add"
@@ -236,7 +276,7 @@
 import { computed } from "vue";
 import Select from "primevue/select";
 import Button from "primevue/button";
-import Chips from "primevue/chips";
+import InputChips from "primevue/inputchips";
 
 const props = defineProps({
     modelValue: {
@@ -253,7 +293,7 @@ const props = defineProps({
     },
 });
 
-const emit = defineEmits(["update:modelValue", "openAddScopeDialog", "clearScopeError"]);
+const emit = defineEmits(["update:modelValue", "openAddScopeDialog", "clearScopeError", "ruleLevelChanged"]);
 
 const ruleLevelOptions = [
     { label: "Ad", value: "ad" },
@@ -265,6 +305,7 @@ const scopeTypeOptions = [
     { label: "Name contains", value: "name_contains" },
     { label: "IDs", value: "ids" },
     { label: "Campaign Name contains", value: "campaign_name_contains" },
+    { label: "Campaign Name doesn't contain", value: "campaign_name_doesnt_contain" },
     { label: "Campaign IDs", value: "campaign_ids" },
 ];
 

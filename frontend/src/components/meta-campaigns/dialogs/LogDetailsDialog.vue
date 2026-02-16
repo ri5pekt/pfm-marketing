@@ -25,6 +25,15 @@
                     <strong>Items Meeting Conditions:</strong>
                     {{ logDetails.details.items_meeting_conditions_count }}
                 </p>
+                <p v-if="logDetails.details.api_calls">
+                    <strong>API Calls:</strong> 
+                    {{ logDetails.details.api_calls.total || 0 }} total
+                    <span class="api-calls-breakdown">
+                        ({{ logDetails.details.api_calls.fetch_items || 0 }} fetch items,
+                        {{ logDetails.details.api_calls.fetch_insights || 0 }} fetch insights,
+                        {{ logDetails.details.api_calls.actions || 0 }} actions)
+                    </span>
+                </p>
             </div>
 
             <div
@@ -39,143 +48,255 @@
                 </DataTable>
             </div>
 
-            <div
-                v-if="logDetails.details.evaluations && logDetails.details.evaluations.length > 0"
-                class="log-section"
-            >
+            <div v-if="logDetails.details.evaluations && logDetails.details.evaluations.length > 0" class="log-section">
                 <h4>Condition Evaluations</h4>
-                <div
-                    v-for="(evaluation, idx) in logDetails.details.evaluations"
-                    :key="idx"
-                    class="evaluation-item"
-                >
+                <div v-for="(evaluation, idx) in logDetails.details.evaluations" :key="idx" class="evaluation-item">
                     <h5>{{ evaluation.item_name }} (ID: {{ evaluation.item_id }})</h5>
-                    <div
-                        v-for="(cond, condIdx) in evaluation.conditions_evaluated"
-                        :key="condIdx"
-                        class="condition-result"
-                    >
-                        <div class="condition-header">
+                    
+                    <!-- NEW: Check if this is new grouped format -->
+                    <div v-if="evaluation.condition_groups" class="grouped-evaluation">
+                        <!-- Overall Result -->
+                        <div class="overall-result">
+                            <strong>Result:</strong>
                             <Tag
-                                :value="cond.passed ? 'PASS' : 'FAIL'"
-                                :severity="cond.passed ? 'success' : 'danger'"
-                                class="condition-tag"
+                                :value="evaluation.any_group_passed ? 'PASSED' : 'FAILED'"
+                                :severity="evaluation.any_group_passed ? 'success' : 'danger'"
                             />
-                            <span class="condition-text">
-                                {{ cond.field }} {{ cond.operator }}
-                                {{ cond.expected_expression ?? cond.expected_value }}
+                            <span v-if="evaluation.passed_group_ids && evaluation.passed_group_ids.length > 0" class="passed-groups">
+                                (Passed: {{ evaluation.passed_group_ids.join(', ') }})
                             </span>
                         </div>
-                        <div v-if="cond.threshold !== null && cond.threshold !== undefined" class="p-text-secondary condition-threshold">
-                            <strong>Threshold:</strong> {{ cond.threshold }}
-                        </div>
-                        <div v-if="cond.time_range_used" class="p-text-secondary condition-time-range">
-                            <strong>Time Range:</strong>
-                            <span v-if="typeof cond.time_range_used === 'object' && cond.time_range_used !== null">
-                                {{ formatTimeRange(cond.time_range_used) }}
-                            </span>
-                            <span v-else-if="cond.time_range_used === 'global'">
-                                Global ({{ formatTimeRange(logDetails.details.time_range) }})
-                            </span>
-                            <span v-else>{{ cond.time_range_used }}</span>
-                        </div>
-                        <div class="p-text-secondary condition-compare-line">
-                            Compared: actual =
-                            {{
-                                cond.actual_value !== null && cond.actual_value !== undefined
-                                    ? cond.actual_value
-                                    : 'N/A'
-                            }}
-                            {{ cond.operator }}
-                            expected =
-                            {{
-                                cond.expected_value !== null && cond.expected_value !== undefined
-                                    ? cond.expected_value
-                                    : 'N/A'
-                            }}
-                        </div>
-                        <!-- CPP Winning Days Breakdown -->
-                        <div v-if="cond.cpp_winning_days_breakdown && cond.cpp_winning_days_breakdown.length > 0" class="cpp-winning-days-breakdown">
-                            <strong>Daily CPP Breakdown ({{ cond.cpp_winning_days_total_days }} days):</strong>
-                            <div class="daily-cpp-list">
-                                <div
-                                    v-for="(day, dayIdx) in cond.cpp_winning_days_breakdown"
-                                    :key="dayIdx"
-                                    :class="['daily-cpp-item', { 'winning': day.is_winning }]"
-                                >
-                                    <span class="date">{{ day.date }}:</span>
-                                    <span class="cpp-value">
-                                        CPP = ${{ formatNumber(day.cpp) }}
-                                    </span>
-                                    <span v-if="day.spend !== null && day.spend !== undefined" class="spend">
-                                        (Spend: ${{ formatNumber(day.spend) }})
-                                    </span>
-                                    <Tag
-                                        v-if="day.is_winning"
-                                        value="WINNING"
-                                        severity="success"
-                                        class="winning-tag"
-                                    />
-                                </div>
+
+                        <!-- Each Group -->
+                        <div v-for="(group, groupIdx) in evaluation.condition_groups" :key="groupIdx" class="condition-group-log">
+                            <!-- OR Divider -->
+                            <div v-if="groupIdx > 0" class="log-or-divider">
+                                <div class="divider-line"></div>
+                                <span class="divider-label">OR</span>
+                                <div class="divider-line"></div>
                             </div>
-                        </div>
-                        <!-- Media Margin Volume Details (debug) -->
-                        <div v-if="cond.calculation_details" class="calculation-details">
-                            <div class="calculation-formula">
-                                <strong>Formula:</strong> {{ cond.calculation_details.formula }}
+
+                            <!-- Group Header -->
+                            <div class="group-header-log">
+                                <strong>{{ group.group_id }}</strong>
+                                <Tag
+                                    :value="group.all_conditions_passed ? 'ALL PASSED' : 'FAILED'"
+                                    :severity="group.all_conditions_passed ? 'success' : 'danger'"
+                                    size="small"
+                                />
                             </div>
-                            <div class="calculation-breakdown">
-                                <div>
-                                    <strong>Purchase Value:</strong>
-                                    ${{
-                                        (cond.calculation_details.purchase_value ?? 0).toFixed
-                                            ? cond.calculation_details.purchase_value.toFixed(2)
-                                            : cond.calculation_details.purchase_value
-                                    }}
-                                    <span class="p-text-secondary"
-                                        >(source: {{ cond.calculation_details.purchase_value_source }})</span
+
+                            <!-- Conditions in Group -->
+                            <div class="group-conditions">
+                                <div v-for="(cond, condIdx) in group.conditions_evaluated" :key="condIdx" class="condition-result">
+                                    <!-- AND Connector -->
+                                    <div v-if="condIdx > 0" class="log-and-connector">AND</div>
+
+                                    <!-- Condition Details -->
+                                    <div class="condition-header">
+                                        <Tag
+                                            :value="cond.passed ? 'PASS' : 'FAIL'"
+                                            :severity="cond.passed ? 'success' : 'danger'"
+                                            class="condition-tag"
+                                        />
+                                        <span class="condition-text">
+                                            {{ cond.field }} {{ cond.operator }}
+                                            {{ cond.expected_expression ?? cond.expected_value }}
+                                        </span>
+                                    </div>
+                                    <div
+                                        v-if="cond.threshold !== null && cond.threshold !== undefined"
+                                        class="p-text-secondary condition-threshold"
                                     >
-                                </div>
-                                <div>
-                                    <strong>Spend:</strong>
-                                    ${{
-                                        (cond.calculation_details.spend ?? 0).toFixed
-                                            ? cond.calculation_details.spend.toFixed(2)
-                                            : cond.calculation_details.spend
-                                    }}
-                                </div>
-                                <div><strong>Purchases:</strong> {{ cond.calculation_details.purchase_count }}</div>
-                                <div
-                                    v-if="
-                                        cond.calculation_details.aov !== null &&
-                                        cond.calculation_details.aov !== undefined
-                                    "
-                                >
-                                    <strong>AOV:</strong> ${{ cond.calculation_details.aov.toFixed(2) }}
-                                </div>
-                                <div
-                                    v-if="
-                                        cond.calculation_details.cpp !== null &&
-                                        cond.calculation_details.cpp !== undefined
-                                    "
-                                >
-                                    <strong>CPP:</strong> ${{ cond.calculation_details.cpp.toFixed(2) }}
-                                </div>
-                                <div class="calculation-result">
-                                    <strong>Result:</strong> ${{ cond.calculation_details.result.toFixed(2) }}
-                                </div>
-                                <div v-if="cond.calculation_details.note" class="p-text-secondary">
-                                    {{ cond.calculation_details.note }}
+                                        <strong>Threshold:</strong> {{ cond.threshold }}
+                                    </div>
+                                    <div v-if="cond.time_range_used" class="p-text-secondary condition-time-range">
+                                        <strong>Time Range:</strong>
+                                        <span v-if="typeof cond.time_range_used === 'object' && cond.time_range_used !== null">
+                                            {{ formatTimeRange(cond.time_range_used) }}
+                                        </span>
+                                        <span v-else-if="cond.time_range_used === 'global'">
+                                            Global ({{ formatTimeRange(logDetails.details.time_range) }})
+                                        </span>
+                                        <span v-else>{{ cond.time_range_used }}</span>
+                                    </div>
+                                    <div class="p-text-secondary condition-compare-line">
+                                        Compared: actual =
+                                        {{
+                                            cond.actual_value !== null && cond.actual_value !== undefined
+                                                ? cond.actual_value
+                                                : "N/A"
+                                        }}
+                                        {{ cond.operator }}
+                                        expected =
+                                        {{
+                                            cond.expected_value !== null && cond.expected_value !== undefined
+                                                ? cond.expected_value
+                                                : "N/A"
+                                        }}
+                                    </div>
+                                    <!-- Media Margin Volume Details (debug) -->
+                                    <div v-if="cond.calculation_details" class="calculation-details">
+                                        <div class="calculation-formula">
+                                            <strong>Formula:</strong> {{ cond.calculation_details.formula }}
+                                        </div>
+                                        <div class="calculation-breakdown">
+                                            <div>
+                                                <strong>Purchase Value:</strong>
+                                                ${{
+                                                    (cond.calculation_details.purchase_value ?? 0).toFixed
+                                                        ? cond.calculation_details.purchase_value.toFixed(2)
+                                                        : cond.calculation_details.purchase_value
+                                                }}
+                                                <span class="p-text-secondary"
+                                                    >(source: {{ cond.calculation_details.purchase_value_source }})</span
+                                                >
+                                            </div>
+                                            <div>
+                                                <strong>Spend:</strong>
+                                                ${{
+                                                    (cond.calculation_details.spend ?? 0).toFixed
+                                                        ? cond.calculation_details.spend.toFixed(2)
+                                                        : cond.calculation_details.spend
+                                                }}
+                                            </div>
+                                            <div><strong>Purchases:</strong> {{ cond.calculation_details.purchase_count }}</div>
+                                            <div
+                                                v-if="
+                                                    cond.calculation_details.aov !== null &&
+                                                    cond.calculation_details.aov !== undefined
+                                                "
+                                            >
+                                                <strong>AOV:</strong> ${{ cond.calculation_details.aov.toFixed(2) }}
+                                            </div>
+                                            <div
+                                                v-if="
+                                                    cond.calculation_details.cpp !== null &&
+                                                    cond.calculation_details.cpp !== undefined
+                                                "
+                                            >
+                                                <strong>CPP:</strong> ${{ cond.calculation_details.cpp.toFixed(2) }}
+                                            </div>
+                                            <div class="calculation-result">
+                                                <strong>Result:</strong> ${{ cond.calculation_details.result.toFixed(2) }}
+                                            </div>
+                                            <div v-if="cond.calculation_details.note" class="p-text-secondary">
+                                                {{ cond.calculation_details.note }}
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
-                    <div class="condition-overall">
-                        <strong>All Conditions Met:</strong>
-                        <Tag
-                            :value="evaluation.all_conditions_met ? 'YES' : 'NO'"
-                            :severity="evaluation.all_conditions_met ? 'success' : 'danger'"
-                        />
+
+                    <!-- OLD FORMAT: Backward compatibility -->
+                    <div v-else-if="evaluation.conditions_evaluated" class="flat-evaluation">
+                        <div
+                            v-for="(cond, condIdx) in evaluation.conditions_evaluated"
+                            :key="condIdx"
+                            class="condition-result"
+                        >
+                            <div class="condition-header">
+                                <Tag
+                                    :value="cond.passed ? 'PASS' : 'FAIL'"
+                                    :severity="cond.passed ? 'success' : 'danger'"
+                                    class="condition-tag"
+                                />
+                                <span class="condition-text">
+                                    {{ cond.field }} {{ cond.operator }}
+                                    {{ cond.expected_expression ?? cond.expected_value }}
+                                </span>
+                            </div>
+                            <div
+                                v-if="cond.threshold !== null && cond.threshold !== undefined"
+                                class="p-text-secondary condition-threshold"
+                            >
+                                <strong>Threshold:</strong> {{ cond.threshold }}
+                            </div>
+                            <div v-if="cond.time_range_used" class="p-text-secondary condition-time-range">
+                                <strong>Time Range:</strong>
+                                <span v-if="typeof cond.time_range_used === 'object' && cond.time_range_used !== null">
+                                    {{ formatTimeRange(cond.time_range_used) }}
+                                </span>
+                                <span v-else-if="cond.time_range_used === 'global'">
+                                    Global ({{ formatTimeRange(logDetails.details.time_range) }})
+                                </span>
+                                <span v-else>{{ cond.time_range_used }}</span>
+                            </div>
+                            <div class="p-text-secondary condition-compare-line">
+                                Compared: actual =
+                                {{
+                                    cond.actual_value !== null && cond.actual_value !== undefined
+                                        ? cond.actual_value
+                                        : "N/A"
+                                }}
+                                {{ cond.operator }}
+                                expected =
+                                {{
+                                    cond.expected_value !== null && cond.expected_value !== undefined
+                                        ? cond.expected_value
+                                        : "N/A"
+                                }}
+                            </div>
+                            <!-- Media Margin Volume Details (debug) -->
+                            <div v-if="cond.calculation_details" class="calculation-details">
+                                <div class="calculation-formula">
+                                    <strong>Formula:</strong> {{ cond.calculation_details.formula }}
+                                </div>
+                                <div class="calculation-breakdown">
+                                    <div>
+                                        <strong>Purchase Value:</strong>
+                                        ${{
+                                            (cond.calculation_details.purchase_value ?? 0).toFixed
+                                                ? cond.calculation_details.purchase_value.toFixed(2)
+                                                : cond.calculation_details.purchase_value
+                                        }}
+                                        <span class="p-text-secondary"
+                                            >(source: {{ cond.calculation_details.purchase_value_source }})</span
+                                        >
+                                    </div>
+                                    <div>
+                                        <strong>Spend:</strong>
+                                        ${{
+                                            (cond.calculation_details.spend ?? 0).toFixed
+                                                ? cond.calculation_details.spend.toFixed(2)
+                                                : cond.calculation_details.spend
+                                        }}
+                                    </div>
+                                    <div><strong>Purchases:</strong> {{ cond.calculation_details.purchase_count }}</div>
+                                    <div
+                                        v-if="
+                                            cond.calculation_details.aov !== null &&
+                                            cond.calculation_details.aov !== undefined
+                                        "
+                                    >
+                                        <strong>AOV:</strong> ${{ cond.calculation_details.aov.toFixed(2) }}
+                                    </div>
+                                    <div
+                                        v-if="
+                                            cond.calculation_details.cpp !== null &&
+                                            cond.calculation_details.cpp !== undefined
+                                        "
+                                    >
+                                        <strong>CPP:</strong> ${{ cond.calculation_details.cpp.toFixed(2) }}
+                                    </div>
+                                    <div class="calculation-result">
+                                        <strong>Result:</strong> ${{ cond.calculation_details.result.toFixed(2) }}
+                                    </div>
+                                    <div v-if="cond.calculation_details.note" class="p-text-secondary">
+                                        {{ cond.calculation_details.note }}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="condition-overall">
+                            <strong>All Conditions Met:</strong>
+                            <Tag
+                                :value="evaluation.all_conditions_met ? 'YES' : 'NO'"
+                                :severity="evaluation.all_conditions_met ? 'success' : 'danger'"
+                            />
+                        </div>
                     </div>
                 </div>
             </div>
@@ -191,10 +312,8 @@
                     <Column field="action_type" header="Action Type">
                         <template #body="slotProps">
                             <Tag
-                                :value="
-                                    slotProps.data.action_type === 'set_status' ? 'Set Status' : 'Adjust Budget'
-                                "
-                                :severity="slotProps.data.action_type === 'set_status' ? 'info' : 'warning'"
+                                :value="formatActionType(slotProps.data.action_type)"
+                                :severity="getActionTypeSeverity(slotProps.data.action_type)"
                             />
                         </template>
                     </Column>
@@ -232,6 +351,26 @@
                         </template>
                     </Column>
                     <Column
+                        v-if="logDetails.details.actions_executed.some((a) => a.old_name)"
+                        field="old_name"
+                        header="Old Name"
+                    >
+                        <template #body="slotProps">
+                            <span v-if="slotProps.data.old_name">{{ slotProps.data.old_name }}</span>
+                            <span v-else>-</span>
+                        </template>
+                    </Column>
+                    <Column
+                        v-if="logDetails.details.actions_executed.some((a) => a.new_name)"
+                        field="new_name"
+                        header="New Name"
+                    >
+                        <template #body="slotProps">
+                            <span v-if="slotProps.data.new_name">{{ slotProps.data.new_name }}</span>
+                            <span v-else>-</span>
+                        </template>
+                    </Column>
+                    <Column
                         v-if="logDetails.details.actions_executed.some((a) => a.error)"
                         field="error"
                         header="Error"
@@ -251,9 +390,7 @@
 
             <div
                 v-if="
-                    logDetails.details.rule_level ||
-                    logDetails.details.scope_filters ||
-                    logDetails.details.time_range
+                    logDetails.details.rule_level || logDetails.details.scope_filters || logDetails.details.time_range
                 "
                 class="log-section"
             >
@@ -289,11 +426,11 @@
 </template>
 
 <script setup>
-import Dialog from 'primevue/dialog'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
-import Tag from 'primevue/tag'
-import Button from 'primevue/button'
+import Dialog from "primevue/dialog";
+import DataTable from "primevue/datatable";
+import Column from "primevue/column";
+import Tag from "primevue/tag";
+import Button from "primevue/button";
 
 defineProps({
     modelValue: {
@@ -304,37 +441,59 @@ defineProps({
         type: Object,
         default: null,
     },
-})
+});
 
-defineEmits(['update:modelValue'])
+defineEmits(["update:modelValue"]);
 
 function formatNumber(value, decimals = 2) {
     if (value === null || value === undefined) {
-        return 'N/A'
+        return "N/A";
     }
-    const num = typeof value === 'number' ? value : parseFloat(value)
+    const num = typeof value === "number" ? value : parseFloat(value);
     if (isNaN(num)) {
-        return 'N/A'
+        return "N/A";
     }
-    return num.toFixed(decimals)
+    return num.toFixed(decimals);
 }
 
 function formatTimeRange(timeRange) {
-    if (!timeRange || typeof timeRange !== 'object') {
-        return 'N/A'
+    if (!timeRange || typeof timeRange !== "object") {
+        return "N/A";
     }
 
-    const unit = timeRange.unit || 'days'
-    const amount = timeRange.amount || 1
-    const excludeToday = timeRange.exclude_today !== undefined ? timeRange.exclude_today : true
+    const unit = timeRange.unit || "days";
+    const amount = timeRange.amount || 1;
+    const excludeToday = timeRange.exclude_today !== undefined ? timeRange.exclude_today : true;
 
-    if (unit === 'today') {
-        return 'Today only'
+    if (unit === "today") {
+        return "Today only";
     }
 
-    const unitLabel = unit === 'minutes' ? 'min' : unit === 'hours' ? 'hr' : 'day'
-    const excludeText = excludeToday ? ' (excl. today)' : ''
-    return `${amount} ${unitLabel}${amount !== 1 ? 's' : ''}${excludeText}`
+    const unitLabel = unit === "minutes" ? "min" : unit === "hours" ? "hr" : "day";
+    const excludeText = excludeToday ? " (excl. today)" : "";
+    return `${amount} ${unitLabel}${amount !== 1 ? "s" : ""}${excludeText}`;
+}
+
+function formatActionType(actionType) {
+    const actionTypeMap = {
+        'set_status': 'Set Status',
+        'adjust_daily_budget': 'Adjust Budget',
+        'append_to_name': 'Append to Name',
+        'remove_from_name': 'Remove from Name',
+        'send_notification': 'Send Notification'
+    };
+    return actionTypeMap[actionType] || actionType?.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) || 'Unknown';
+}
+
+function getActionTypeSeverity(actionType) {
+    const severityMap = {
+        'set_status': 'info',
+        'adjust_daily_budget': 'warning',
+        'append_to_name': 'contrast',
+        'remove_from_name': 'contrast',
+        'send_notification': 'success'
+    };
+    return severityMap[actionType] || 'secondary';
 }
 </script>
 
@@ -568,5 +727,90 @@ function formatTimeRange(timeRange) {
 .daily-cpp-item .winning-tag {
     margin-left: auto;
 }
-</style>
 
+/* Grouped Evaluation Styles */
+.grouped-evaluation {
+    margin-top: 1rem;
+}
+
+.overall-result {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem;
+    background: #f9fafb;
+    border-radius: 6px;
+    margin-bottom: 1rem;
+    font-weight: 600;
+}
+
+.passed-groups {
+    font-size: 0.875rem;
+    color: #6b7280;
+    font-weight: normal;
+}
+
+.condition-group-log {
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    padding: 0.75rem;
+    margin-bottom: 1rem;
+    background: white;
+}
+
+.log-or-divider {
+    display: flex;
+    align-items: center;
+    margin: 1rem 0;
+}
+
+.log-or-divider .divider-line {
+    flex: 1;
+    height: 2px;
+    background: linear-gradient(to right, transparent, #d1d5db, transparent);
+}
+
+.log-or-divider .divider-label {
+    padding: 0.25rem 0.75rem;
+    font-weight: 700;
+    font-size: 0.75rem;
+    color: #3b82f6;
+    background: white;
+    border: 2px solid #3b82f6;
+    border-radius: 12px;
+    margin: 0 0.5rem;
+}
+
+.group-header-log {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 0.5rem;
+    margin-bottom: 0.75rem;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.group-conditions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.log-and-connector {
+    text-align: center;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #6b7280;
+    padding: 0.25rem 0;
+}
+
+.flat-evaluation {
+    margin-top: 0.5rem;
+}
+
+.api-calls-breakdown {
+    color: #6b7280;
+    font-size: 0.875rem;
+    margin-left: 0.5rem;
+}
+</style>

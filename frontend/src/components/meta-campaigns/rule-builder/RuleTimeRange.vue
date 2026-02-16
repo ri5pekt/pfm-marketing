@@ -35,7 +35,7 @@
         </div>
         <div class="field">
             <div class="flex align-items-center gap-2">
-                <InputSwitch
+                <ToggleSwitch
                     :modelValue="modelValue.excludeToday"
                     @update:modelValue="update('excludeToday', $event)"
                     inputId="excludeToday"
@@ -63,7 +63,7 @@
 <script setup>
 import Select from 'primevue/select'
 import InputNumber from 'primevue/inputnumber'
-import InputSwitch from 'primevue/inputswitch'
+import ToggleSwitch from 'primevue/toggleswitch'
 
 const props = defineProps({
     modelValue: {

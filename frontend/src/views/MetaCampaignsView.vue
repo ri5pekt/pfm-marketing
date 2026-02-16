@@ -73,6 +73,7 @@
             @create-folder="handleCreateFolder"
             @rename-folder="handleRenameFolder"
             @delete-folder="handleDeleteFolder"
+            @folder-imported="handleFolderImported"
             @reorder-folders="handleReorderFolders"
             @reorder-rules="handleReorderRules"
             @reorder-unified="handleReorderUnified"
@@ -112,6 +113,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { useToast } from "primevue/usetoast";
 import Button from "primevue/button";
 import Toast from "primevue/toast";
@@ -131,6 +133,8 @@ import { useCampaigns } from "@/composables/useCampaigns";
 import { useRules } from "@/composables/useRules";
 import { useFolders } from "@/composables/useFolders";
 
+const route = useRoute();
+const router = useRouter();
 const toast = useToast();
 
 // Use composables
@@ -251,6 +255,14 @@ async function handleDeleteFolder(folderId) {
     }
 }
 
+async function handleFolderImported() {
+    // Reload folders and rules after import
+    if (selectedAccount.value) {
+        await loadFolders(selectedAccount.value.id);
+        await loadRules(selectedAccount.value.id);
+    }
+}
+
 async function handleReorderFolders(items) {
     if (selectedAccount.value) {
         await saveFolderPositions(selectedAccount.value.id, items);
@@ -338,6 +350,33 @@ async function handleSaveRuleData(ruleData) {
 
 // Lifecycle
 onMounted(async () => {
+    // Check for success messages from rule creation/update
+    if (route.query.ruleCreated === "true") {
+        const ruleName = route.query.ruleName || "Rule";
+        toast.add({
+            severity: "success",
+            summary: "Rule Created",
+            detail: `${ruleName} was created successfully`,
+            life: 4000,
+        });
+        // Clean up query params after a short delay to ensure toast is displayed
+        setTimeout(() => {
+            router.replace({ name: "meta-campaigns" });
+        }, 100);
+    } else if (route.query.ruleUpdated === "true") {
+        const ruleName = route.query.ruleName || "Rule";
+        toast.add({
+            severity: "success",
+            summary: "Rule Updated",
+            detail: `${ruleName} was updated successfully`,
+            life: 4000,
+        });
+        // Clean up query params after a short delay to ensure toast is displayed
+        setTimeout(() => {
+            router.replace({ name: "meta-campaigns" });
+        }, 100);
+    }
+
     try {
         await loadAdAccounts();
     } catch (error) {
@@ -358,7 +397,6 @@ onMounted(async () => {
         }
     } catch (error) {
         // No default account yet - this is expected
-        console.log("No default account found");
     }
 
     // Start polling for rules updates every 5 seconds

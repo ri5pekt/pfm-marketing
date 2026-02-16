@@ -29,7 +29,10 @@ export function useRuleForm() {
         timeRangeUnit: null,
         timeRangeAmount: null,
         excludeToday: true,
-        conditions: [],
+        conditionGroups: [{
+            groupId: crypto.randomUUID(),
+            conditions: []
+        }],
         actions: [],
         schedulePeriod: null,
         scheduleFrequency: 1,
@@ -54,7 +57,10 @@ export function useRuleForm() {
             timeRangeUnit: null,
             timeRangeAmount: null,
             excludeToday: true,
-            conditions: [],
+            conditionGroups: [{
+                groupId: crypto.randomUUID(),
+                conditions: []
+            }],
             actions: [],
             schedulePeriod: null,
             scheduleFrequency: 1,
@@ -120,7 +126,23 @@ export function useRuleForm() {
                 typeof conditions.campaign_name_contains === "string" &&
                 conditions.campaign_name_contains.trim().length > 0
             ) {
-                scopeFilters.push({ type: "campaign_name_contains", value: [conditions.campaign_name_contains.trim()] });
+                scopeFilters.push({
+                    type: "campaign_name_contains",
+                    value: [conditions.campaign_name_contains.trim()],
+                });
+            }
+        }
+        if (conditions.campaign_name_doesnt_contain) {
+            if (Array.isArray(conditions.campaign_name_doesnt_contain) && conditions.campaign_name_doesnt_contain.length > 0) {
+                scopeFilters.push({ type: "campaign_name_doesnt_contain", value: conditions.campaign_name_doesnt_contain });
+            } else if (
+                typeof conditions.campaign_name_doesnt_contain === "string" &&
+                conditions.campaign_name_doesnt_contain.trim().length > 0
+            ) {
+                scopeFilters.push({
+                    type: "campaign_name_doesnt_contain",
+                    value: [conditions.campaign_name_doesnt_contain.trim()],
+                });
             }
         }
         if (conditions.campaign_ids) {
@@ -134,36 +156,80 @@ export function useRuleForm() {
             }
         }
 
-        // Parse conditions array
-        const conditionsArray = (conditions.conditions || []).map((c) => {
-            let value = c.value;
-            // Normalize legacy special values (string) to structured form
-            if (typeof value === "string" && isSpecialValue(value)) {
-                value = { base: value, mul: 1 };
-            }
-            // Normalize structured values missing multiplier
-            if (typeof value === "object" && value && typeof value.base === "string" && value.mul === undefined) {
-                value = { ...value, mul: 1 };
-            }
-            const conditionObj = {
-                field: c.field,
-                operator: c.operator,
-                value,
-            };
-            // Include threshold for CPP Winning Days
-            if (c.field === "cpp_winning_days" && c.threshold !== null && c.threshold !== undefined) {
-                conditionObj.threshold = c.threshold;
-            }
-            // Include time_range if condition has custom time range
-            if (c.time_range && typeof c.time_range === "object" && c.time_range !== null && c.time_range.unit) {
-                conditionObj.time_range = {
-                    unit: c.time_range.unit,
-                    amount: c.time_range.amount,
-                    exclude_today: c.time_range.exclude_today !== undefined ? c.time_range.exclude_today : true,
+        // Parse condition groups (handle both new and old formats)
+        let conditionGroups = [];
+        
+        // New format: condition_groups
+        if (conditions.condition_groups) {
+            conditionGroups = conditions.condition_groups.map((group) => ({
+                groupId: group.group_id || crypto.randomUUID(),
+                conditions: (group.conditions || []).map((c) => {
+                    let value = c.value;
+                    // Normalize legacy special values (string) to structured form
+                    if (typeof value === "string" && isSpecialValue(value)) {
+                        value = { base: value, mul: 1 };
+                    }
+                    // Normalize structured values missing multiplier
+                    if (typeof value === "object" && value && typeof value.base === "string" && value.mul === undefined) {
+                        value = { ...value, mul: 1 };
+                    }
+                    const conditionObj = {
+                        field: c.field,
+                        operator: c.operator,
+                        value,
+                    };
+                    // Include time_range if condition has custom time range
+                    if (c.time_range && typeof c.time_range === "object" && c.time_range !== null && c.time_range.unit) {
+                        conditionObj.time_range = {
+                            unit: c.time_range.unit,
+                            amount: c.time_range.amount,
+                            exclude_today: c.time_range.exclude_today !== undefined ? c.time_range.exclude_today : true,
+                        };
+                    }
+                    return conditionObj;
+                })
+            }));
+        }
+        // Old format: flat conditions array (backward compatibility)
+        else if (conditions.conditions) {
+            const conditionsArray = (conditions.conditions || []).map((c) => {
+                let value = c.value;
+                // Normalize legacy special values (string) to structured form
+                if (typeof value === "string" && isSpecialValue(value)) {
+                    value = { base: value, mul: 1 };
+                }
+                // Normalize structured values missing multiplier
+                if (typeof value === "object" && value && typeof value.base === "string" && value.mul === undefined) {
+                    value = { ...value, mul: 1 };
+                }
+                const conditionObj = {
+                    field: c.field,
+                    operator: c.operator,
+                    value,
                 };
-            }
-            return conditionObj;
-        });
+                // Include time_range if condition has custom time range
+                if (c.time_range && typeof c.time_range === "object" && c.time_range !== null && c.time_range.unit) {
+                    conditionObj.time_range = {
+                        unit: c.time_range.unit,
+                        amount: c.time_range.amount,
+                        exclude_today: c.time_range.exclude_today !== undefined ? c.time_range.exclude_today : true,
+                    };
+                }
+                return conditionObj;
+            });
+            // Wrap in single group for backward compatibility
+            conditionGroups = [{
+                groupId: crypto.randomUUID(),
+                conditions: conditionsArray
+            }];
+        }
+        // Default: empty group
+        else {
+            conditionGroups = [{
+                groupId: crypto.randomUUID(),
+                conditions: []
+            }];
+        }
 
         // Parse actions array
         const actionsArray = (actions.actions || []).map((action) => {
@@ -174,12 +240,13 @@ export function useRuleForm() {
                 percent: action.percent || null,
                 minCap: action.min_cap || null,
                 maxCap: action.max_cap || null,
+                text: action.text || null,
                 sendSlackNotification:
                     action.type === "send_notification"
                         ? true
                         : action.send_slack_notification !== undefined
-                        ? action.send_slack_notification
-                        : true,
+                          ? action.send_slack_notification
+                          : true,
             };
         });
 
@@ -196,20 +263,61 @@ export function useRuleForm() {
             timeRangeUnit: timeRange.unit || null,
             timeRangeAmount: timeRange.unit === "today" ? 1 : timeRange.amount || null,
             excludeToday:
-                timeRange.unit === "today" ? false : timeRange.exclude_today !== undefined ? timeRange.exclude_today : true,
-            conditions: conditionsArray,
+                timeRange.unit === "today"
+                    ? false
+                    : timeRange.exclude_today !== undefined
+                      ? timeRange.exclude_today
+                      : true,
+            conditionGroups: conditionGroups,
             actions: actionsArray,
             schedulePeriod: parsed.period || "none",
             scheduleFrequency: parsed.frequency || 1,
             scheduleTime: parsed.time || null,
             scheduleDayOfWeek: parsed.dayOfWeek !== null ? parsed.dayOfWeek : null,
-            scheduleDayOfMonth: parsed.dayOfMonth !== null && parsed.dayOfMonth !== undefined ? parsed.dayOfMonth : null,
+            scheduleDayOfMonth:
+                parsed.dayOfMonth !== null && parsed.dayOfMonth !== undefined ? parsed.dayOfMonth : null,
             scheduleTimezone: parsed.timezone || "UTC",
             customDailySchedule: parsed.customDailySchedule || {},
         };
 
         scheduleFormErrors.value = {};
         formErrors.value = {};
+    }
+
+    function addConditionGroup() {
+        ruleForm.value.conditionGroups.push({
+            groupId: crypto.randomUUID(),
+            conditions: []
+        });
+    }
+
+    function removeConditionGroup(groupId) {
+        // Keep at least one group
+        if (ruleForm.value.conditionGroups.length <= 1) {
+            return;
+        }
+        const index = ruleForm.value.conditionGroups.findIndex(g => g.groupId === groupId);
+        if (index !== -1) {
+            ruleForm.value.conditionGroups.splice(index, 1);
+        }
+    }
+
+    function addConditionToGroup(groupId) {
+        const group = ruleForm.value.conditionGroups.find(g => g.groupId === groupId);
+        if (group) {
+            group.conditions.push({
+                field: null,
+                operator: null,
+                value: null
+            });
+        }
+    }
+
+    function removeConditionFromGroup(groupId, conditionIndex) {
+        const group = ruleForm.value.conditionGroups.find(g => g.groupId === groupId);
+        if (group && group.conditions.length > conditionIndex) {
+            group.conditions.splice(conditionIndex, 1);
+        }
     }
 
     return {
@@ -219,6 +327,9 @@ export function useRuleForm() {
         resetForm,
         updateRuleForm,
         initializeFormFromRule,
+        addConditionGroup,
+        removeConditionGroup,
+        addConditionToGroup,
+        removeConditionFromGroup,
     };
 }
-

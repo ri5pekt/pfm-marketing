@@ -34,7 +34,7 @@ export function useRuleActions(props, emit) {
         router.push({
             name: 'rule-edit',
             params: { id: ruleId },
-            query: { accountId: props.selectedAccount.id },
+            // No accountId needed - rule already has ad_account_id
         });
     }
 
