@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.1.0] - 2026-02-17
+
+### Added
+
+- **Interval-based execution for custom daily schedules**: Rules can now run multiple times per day on selected days
+    - New "Run every" option alongside "Run once" for each day in the rule builder
+    - Interval options: 15 min, 30 min, 1 hour, 3 hours, 6 hours, 12 hours
+    - Example: Sunday every 15 minutes starting at 00:00 (96 executions per day)
+    - Flexible per-day configuration: different intervals for different days
+    - Execution count display (e.g., "96 times/day") for visual feedback
+    - Backwards compatible: existing "run once" rules continue to work without changes
+    - Fully supported in folder export/import JSON format
+    - Backend: Enhanced `schedule_custom_daily_rule()` to handle both string and object formats
+    - Backend: New `generate_interval_times()` helper function for calculating execution times
+    - Frontend: Updated RuleSchedule.vue with new dropdown controls
+    - Frontend: Updated cronHelpers.js to build/parse interval format
+    - Frontend: Enhanced schedule display to show "Sunday every 15 min from 00:00"
+
 ## [4.0.0] - 2026-02-16
 
 ### Added

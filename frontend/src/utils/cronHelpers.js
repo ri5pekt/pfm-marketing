@@ -69,8 +69,20 @@ export function buildCronExpression(ruleForm) {
         weekDays.forEach((day) => {
             if (customDailySchedule[day.value]) {
                 const time = customDailySchedule[day.value + "_time"];
+                const mode = customDailySchedule[day.value + "_mode"] || "once";
+                const interval = customDailySchedule[day.value + "_interval"];
+                
                 if (time) {
-                    schedule[day.value] = time;
+                    if (mode === "every" && interval) {
+                        // Interval format: object with start_time and interval_minutes
+                        schedule[day.value] = {
+                            start_time: time,
+                            interval_minutes: interval
+                        };
+                    } else {
+                        // Run once format: string time
+                        schedule[day.value] = time;
+                    }
                 }
             }
         });
@@ -148,8 +160,23 @@ export function parseCronExpression(cron) {
         if (parsed.type === "custom_daily" && parsed.schedule) {
             const customSchedule = {};
             Object.keys(parsed.schedule).forEach((dayValue) => {
+                const dayConfig = parsed.schedule[dayValue];
                 customSchedule[dayValue] = true;
-                customSchedule[dayValue + "_time"] = parsed.schedule[dayValue];
+                
+                if (typeof dayConfig === "string") {
+                    // Format 1: Simple string "HH:MM" - run once
+                    customSchedule[dayValue + "_time"] = dayConfig;
+                    customSchedule[dayValue + "_mode"] = "once";
+                } else if (typeof dayConfig === "object" && dayConfig.start_time) {
+                    // Format 2: Object with start_time and interval_minutes
+                    customSchedule[dayValue + "_time"] = dayConfig.start_time;
+                    customSchedule[dayValue + "_mode"] = "every";
+                    customSchedule[dayValue + "_interval"] = dayConfig.interval_minutes || 15;
+                } else {
+                    // Fallback: treat as string
+                    customSchedule[dayValue + "_time"] = String(dayConfig);
+                    customSchedule[dayValue + "_mode"] = "once";
+                }
             });
             return {
                 period: "daily_custom",
@@ -323,8 +350,26 @@ export function formatSchedule(scheduleCron) {
 
             for (const dayNum of sortedDays) {
                 const dayName = weekDays.find((d) => d.value === dayNum)?.label || `Day ${dayNum}`;
-                const time = schedule[dayNum.toString()];
-                scheduleParts.push(`${dayName} at ${time}`);
+                const dayConfig = schedule[dayNum.toString()];
+                
+                if (typeof dayConfig === "string") {
+                    // Run once format
+                    scheduleParts.push(`${dayName} at ${dayConfig}`);
+                } else if (typeof dayConfig === "object" && dayConfig.start_time) {
+                    // Interval format
+                    const interval = dayConfig.interval_minutes;
+                    let intervalText = "";
+                    if (interval < 60) {
+                        intervalText = `${interval} min`;
+                    } else {
+                        const hours = interval / 60;
+                        intervalText = hours === 1 ? "1 hour" : `${hours} hours`;
+                    }
+                    scheduleParts.push(`${dayName} every ${intervalText} from ${dayConfig.start_time}`);
+                } else {
+                    // Fallback
+                    scheduleParts.push(`${dayName} at ${dayConfig}`);
+                }
             }
 
             if (scheduleParts.length === 0) {
@@ -399,5 +444,45 @@ export function formatSchedule(scheduleCron) {
 
     // Fallback: return the cron expression as-is
     return scheduleCron;
+}
+
+/**
+ * Get formatted schedule with short and full versions
+ * Returns { short, full, isComplex }
+ */
+export function getScheduleDisplay(scheduleCron) {
+    const full = formatSchedule(scheduleCron);
+    
+    let short = full;
+    let isComplex = false;
+    
+    // Check if it's a custom daily schedule - always shorten these
+    try {
+        const parsed = JSON.parse(scheduleCron);
+        if (parsed.type === "custom_daily" && parsed.schedule) {
+            isComplex = true;
+            const dayCount = Object.keys(parsed.schedule).length;
+            const timezone = parsed.timezone || "UTC";
+            
+            if (dayCount === 1) {
+                // Single day - show the day name
+                const dayNum = Object.keys(parsed.schedule)[0];
+                const dayName = weekDays.find((d) => d.value === parseInt(dayNum))?.label || `Day ${dayNum}`;
+                short = `${dayName} at Custom Times`;
+            } else if (dayCount === 7) {
+                short = "Daily at Custom Times";
+            } else {
+                short = `${dayCount} Days at Custom Times`;
+            }
+            
+            if (timezone !== "UTC") {
+                short += ` (${timezone})`;
+            }
+        }
+    } catch (e) {
+        // Not a custom daily schedule, keep as-is
+    }
+    
+    return { short, full, isComplex };
 }
 

@@ -112,20 +112,53 @@
                         />
                         <label :for="`day-${day.value}`" class="day-label">{{ day.label }}</label>
                     </div>
-                    <InputText
-                        :modelValue="modelValue.customDailySchedule[day.value + '_time']"
-                        @update:modelValue="updateCustomDailyTime(day.value, $event)"
-                        :disabled="!modelValue.customDailySchedule[day.value]"
-                        placeholder="HH:MM (e.g., 09:00)"
-                        class="time-input"
-                        :class="{ 'p-invalid': errors[`day_${day.value}_time`] }"
-                        @blur="validateTime(day.value)"
-                    />
+                    
+                    <div class="schedule-controls" v-if="modelValue.customDailySchedule[day.value]">
+                        <div class="time-control">
+                            <label class="control-label">Start at:</label>
+                            <InputText
+                                :modelValue="getDayStartTime(day.value)"
+                                @update:modelValue="updateCustomDailyTime(day.value, $event)"
+                                :disabled="!modelValue.customDailySchedule[day.value]"
+                                placeholder="HH:MM (e.g., 09:00)"
+                                class="time-input"
+                                :class="{ 'p-invalid': errors[`day_${day.value}_time`] }"
+                                @blur="validateTime(day.value)"
+                            />
+                        </div>
+                        
+                        <div class="run-mode-control">
+                            <Select
+                                :modelValue="getDayRunMode(day.value)"
+                                @update:modelValue="updateRunMode(day.value, $event)"
+                                :options="runModeOptions"
+                                optionLabel="label"
+                                optionValue="value"
+                                placeholder="Run once"
+                                class="run-mode-select"
+                            />
+                        </div>
+                        
+                        <div class="interval-control" v-if="getDayRunMode(day.value) === 'every'">
+                            <Select
+                                :modelValue="getDayInterval(day.value)"
+                                @update:modelValue="updateInterval(day.value, $event)"
+                                :options="intervalOptions"
+                                optionLabel="label"
+                                optionValue="value"
+                                placeholder="Select interval"
+                                class="interval-select"
+                            />
+                            <small class="execution-count" v-if="getDayInterval(day.value)">
+                                {{ getExecutionCount(getDayInterval(day.value)) }} times/day
+                            </small>
+                        </div>
+                    </div>
                 </div>
             </div>
             <small v-if="errors.customDaily" class="p-error">{{ errors.customDaily }}</small>
             <small class="p-text-secondary"
-                >Select days and set execution times in 24-hour format</small
+                >Select days, set start times, and choose execution frequency</small
             >
         </div>
 
@@ -167,6 +200,22 @@ const props = defineProps({
 
 const emit = defineEmits(["update:modelValue", "schedulePeriodChanged", "validateTime"]);
 
+// Run mode options
+const runModeOptions = [
+    { label: "Run once", value: "once" },
+    { label: "Run every", value: "every" },
+];
+
+// Interval options
+const intervalOptions = [
+    { label: "15 minutes", value: 15 },
+    { label: "30 minutes", value: 30 },
+    { label: "1 hour", value: 60 },
+    { label: "3 hours", value: 180 },
+    { label: "6 hours", value: 360 },
+    { label: "12 hours", value: 720 },
+];
+
 function update(field, value) {
     emit("update:modelValue", {
         ...props.modelValue,
@@ -200,27 +249,74 @@ function onSchedulePeriodChange() {
 
 function onDayToggle(dayValue, checked) {
     const customDailySchedule = { ...props.modelValue.customDailySchedule };
-    if (!customDailySchedule) {
-        customDailySchedule = {};
-    }
     if (checked) {
         customDailySchedule[dayValue] = true;
         // Set default time if not set
         if (!customDailySchedule[dayValue + "_time"]) {
             customDailySchedule[dayValue + "_time"] = "12:00";
         }
+        // Set default run mode if not set
+        if (!customDailySchedule[dayValue + "_mode"]) {
+            customDailySchedule[dayValue + "_mode"] = "once";
+        }
     } else {
         customDailySchedule[dayValue] = false;
-        // Clear time when unchecked
+        // Clear time and mode when unchecked
         delete customDailySchedule[dayValue + "_time"];
+        delete customDailySchedule[dayValue + "_mode"];
+        delete customDailySchedule[dayValue + "_interval"];
     }
     update("customDailySchedule", customDailySchedule);
+}
+
+function getDayStartTime(dayValue) {
+    const timeKey = dayValue + "_time";
+    return props.modelValue.customDailySchedule[timeKey] || "12:00";
+}
+
+function getDayRunMode(dayValue) {
+    const modeKey = dayValue + "_mode";
+    return props.modelValue.customDailySchedule[modeKey] || "once";
+}
+
+function getDayInterval(dayValue) {
+    const intervalKey = dayValue + "_interval";
+    return props.modelValue.customDailySchedule[intervalKey] || null;
 }
 
 function updateCustomDailyTime(dayValue, time) {
     const customDailySchedule = { ...props.modelValue.customDailySchedule };
     customDailySchedule[dayValue + "_time"] = time;
     update("customDailySchedule", customDailySchedule);
+}
+
+function updateRunMode(dayValue, mode) {
+    const customDailySchedule = { ...props.modelValue.customDailySchedule };
+    customDailySchedule[dayValue + "_mode"] = mode;
+    
+    // If switching to "once", clear interval
+    if (mode === "once") {
+        delete customDailySchedule[dayValue + "_interval"];
+    } else if (mode === "every" && !customDailySchedule[dayValue + "_interval"]) {
+        // Set default interval when switching to "every"
+        customDailySchedule[dayValue + "_interval"] = 15;
+    }
+    
+    update("customDailySchedule", customDailySchedule);
+}
+
+function updateInterval(dayValue, interval) {
+    const customDailySchedule = { ...props.modelValue.customDailySchedule };
+    customDailySchedule[dayValue + "_interval"] = interval;
+    update("customDailySchedule", customDailySchedule);
+}
+
+function getExecutionCount(intervalMinutes) {
+    if (!intervalMinutes) return 0;
+    
+    // Calculate executions for full 24-hour day
+    const minutesInDay = 24 * 60;
+    return Math.floor(minutesInDay / intervalMinutes);
 }
 
 function validateTime(dayValue) {
@@ -284,9 +380,9 @@ function validateTime(dayValue) {
 
 .custom-daily-row {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 1rem;
-    padding: 0.5rem;
+    padding: 0.75rem;
     border: 1px solid #e5e7eb;
     border-radius: 6px;
     background-color: #fff;
@@ -297,6 +393,7 @@ function validateTime(dayValue) {
     align-items: center;
     gap: 0.5rem;
     min-width: 120px;
+    padding-top: 0.5rem;
 }
 
 .day-label {
@@ -306,15 +403,61 @@ function validateTime(dayValue) {
     user-select: none;
 }
 
-.time-input {
+.schedule-controls {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
     flex: 1;
-    max-width: 150px;
+    flex-wrap: wrap;
+}
+
+.time-control {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.control-label {
+    font-size: 0.875rem;
+    color: #6b7280;
+    white-space: nowrap;
+    font-weight: 500;
+}
+
+.time-input {
+    width: 140px;
 }
 
 .time-input:disabled {
     background-color: #f3f4f6;
     color: #9ca3af;
     cursor: not-allowed;
+}
+
+.run-mode-control {
+    display: flex;
+    align-items: center;
+}
+
+.run-mode-select {
+    width: 140px;
+}
+
+.interval-control {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.interval-select {
+    width: 140px;
+}
+
+.execution-count {
+    color: #059669;
+    font-size: 0.75rem;
+    font-weight: 500;
+    white-space: nowrap;
 }
 </style>
 

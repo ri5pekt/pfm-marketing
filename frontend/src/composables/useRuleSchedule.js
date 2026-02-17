@@ -84,7 +84,14 @@ export function useRuleSchedule(ruleForm, scheduleFormErrors) {
                 let hasInvalidTime = false;
                 selectedDays.forEach((day) => {
                     const timeKey = day.value + "_time";
+                    const modeKey = day.value + "_mode";
+                    const intervalKey = day.value + "_interval";
+                    
                     const time = ruleForm.value.customDailySchedule[timeKey];
+                    const mode = ruleForm.value.customDailySchedule[modeKey] || "once";
+                    const interval = ruleForm.value.customDailySchedule[intervalKey];
+                    
+                    // Validate time
                     if (!time) {
                         scheduleFormErrors.value[`day_${day.value}_time`] = "Time is required for selected day";
                         hasInvalidTime = true;
@@ -96,6 +103,14 @@ export function useRuleSchedule(ruleForm, scheduleFormErrors) {
                         } else {
                             delete scheduleFormErrors.value[`day_${day.value}_time`];
                         }
+                    }
+                    
+                    // Validate interval if mode is "every"
+                    if (mode === "every" && !interval) {
+                        scheduleFormErrors.value[`day_${day.value}_interval`] = "Interval is required when 'Run every' is selected";
+                        hasInvalidTime = true;
+                    } else {
+                        delete scheduleFormErrors.value[`day_${day.value}_interval`];
                     }
                 });
                 if (!hasInvalidTime) {

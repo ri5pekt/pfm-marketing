@@ -2,9 +2,17 @@
 
 Marketing department tool for managing Meta campaigns with automated rules, scheduled checks, and logging.
 
-## Version 3.0.0
+## Version 4.1.0
 
-### Major Features
+### Latest Features (v4.1.0)
+- **Interval-Based Execution**: Rules can now run multiple times per day on selected days
+  - Choose "Run once" or "Run every" for each day
+  - Interval options: 15 min, 30 min, 1 hour, 3 hours, 6 hours, 12 hours
+  - Example: Sunday every 15 minutes = 96 executions
+  - Different intervals for different days
+  - Fully backwards compatible
+
+### Major Features (v4.0.0)
 - **Per-Condition Time Ranges**: Each condition can now specify its own time range for data fetching
 - **CPP Winning Days**: New condition field that counts days where Cost Per Purchase was below a threshold
 - **Amount of Active Ads**: New condition field to count active ads in campaigns/adsets

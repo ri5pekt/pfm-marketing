@@ -24,6 +24,40 @@ logger = logging.getLogger(__name__)
 scheduler = Scheduler(connection=redis_conn)
 
 
+def generate_interval_times(start_time: str, interval_minutes: int, end_time: str = "23:59") -> list:
+    """
+    Generate all execution times for a given interval within a day.
+    
+    Args:
+        start_time: Starting time in HH:MM format (e.g., "00:00")
+        interval_minutes: Interval in minutes (e.g., 15, 30, 60)
+        end_time: Ending time in HH:MM format (e.g., "23:59")
+    
+    Returns:
+        List of time strings in HH:MM format
+    
+    Example:
+        generate_interval_times("00:00", 15) -> ["00:00", "00:15", "00:30", ..., "23:45"]
+    """
+    start_hour, start_minute = map(int, start_time.split(":"))
+    end_hour, end_minute = map(int, end_time.split(":"))
+    
+    # Convert to minutes from midnight
+    start_minutes = start_hour * 60 + start_minute
+    end_minutes = end_hour * 60 + end_minute
+    
+    times = []
+    current_minutes = start_minutes
+    
+    while current_minutes <= end_minutes:
+        hour = current_minutes // 60
+        minute = current_minutes % 60
+        times.append(f"{hour:02d}:{minute:02d}")
+        current_minutes += interval_minutes
+    
+    return times
+
+
 def cron_to_interval_seconds(cron_expr: str) -> int:
     """Convert cron expression to interval in seconds for rq-scheduler"""
     # Parse cron: minute hour day month weekday
@@ -183,8 +217,15 @@ def schedule_rule(rule: models.CampaignRule):
 def schedule_custom_daily_rule(rule: models.CampaignRule, schedule: dict, timezone: str = "UTC"):
     """
     Schedule a rule with custom daily times.
-    schedule is a dict like: {"0": "09:00", "1": "14:30", ...} where keys are day numbers (0=Sunday, 6=Saturday)
-    timezone is the timezone string (e.g., "UTC", "America/New_York", "Asia/Jerusalem")
+    
+    Supports two formats:
+    1. Run once per day: {"0": "09:00", "1": "14:30", ...}
+    2. Run with intervals: {"0": {"start_time": "00:00", "interval_minutes": 15}, ...}
+    
+    Args:
+        rule: The campaign rule to schedule
+        schedule: Dict where keys are day numbers (0=Sunday, 6=Saturday)
+        timezone: Timezone string (e.g., "UTC", "America/New_York", "Asia/Jerusalem")
     """
     # First, unschedule any existing jobs for this rule
     unschedule_rule(rule.id)
@@ -205,59 +246,84 @@ def schedule_custom_daily_rule(rule: models.CampaignRule, schedule: dict, timezo
 
     # Get current time in the schedule's timezone
     now_tz = datetime.now(tz)
+    now_naive = now_tz.replace(tzinfo=None)
 
-    # Schedule a job for each day/time combination
-    for day_str, time_str in schedule.items():
+    # Schedule jobs for each day/time combination
+    for day_str, time_config in schedule.items():
         try:
             day = int(day_str)
-            hour, minute = map(int, time_str.split(":"))
-
-            # Create a cron expression for this specific day and time
-            # Cron format: minute hour * * dayOfWeek
-            cron_expr = f"{minute} {hour} * * {day}"
-
-            # Calculate next run time in the schedule's timezone
-            # croniter works with naive datetime, so we convert to naive first
-            now_naive = now_tz.replace(tzinfo=None)
-            cron = croniter(cron_expr, now_naive)
-            next_run_naive = cron.get_next(datetime)
-
-            # Localize to the schedule's timezone, then convert to UTC for storage
-            # pytz uses localize(), zoneinfo uses replace()
-            if hasattr(tz, 'localize'):
-                # pytz timezone
-                next_run_tz = tz.localize(next_run_naive)
+            day_name = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][day]
+            
+            # Determine if this is a simple time string or interval config
+            if isinstance(time_config, str):
+                # Format 1: Simple string "HH:MM" - run once
+                execution_times = [time_config]
+                interval_info = f"once at {time_config}"
+            elif isinstance(time_config, dict):
+                # Format 2: Interval config with start_time and interval_minutes
+                start_time = time_config.get("start_time", "00:00")
+                interval_minutes = time_config.get("interval_minutes")
+                end_time = time_config.get("end_time", "23:59")
+                
+                if interval_minutes:
+                    # Generate all execution times for this interval
+                    execution_times = generate_interval_times(start_time, interval_minutes, end_time)
+                    interval_info = f"every {interval_minutes} minutes from {start_time} to {end_time} ({len(execution_times)} times)"
+                else:
+                    # No interval specified, treat as run once
+                    execution_times = [start_time]
+                    interval_info = f"once at {start_time}"
             else:
-                # zoneinfo timezone
-                next_run_tz = next_run_naive.replace(tzinfo=tz)
+                logger.error(f"Invalid time_config format for rule {rule.id}, day {day}: {time_config}")
+                continue
 
-            # Convert to UTC for storage
-            utc_tz = ZoneInfo("UTC")
-            next_run_utc = next_run_tz.astimezone(utc_tz)
+            logger.info(f"Scheduling rule {rule.id} ({rule.name}) for {day_name}: {interval_info} ({timezone})")
 
-            # Calculate interval (7 days = 604800 seconds)
-            interval_seconds = 7 * 24 * 60 * 60  # Weekly interval
+            # Schedule a job for each execution time
+            for execution_time in execution_times:
+                hour, minute = map(int, execution_time.split(":"))
+                
+                # Create a cron expression for this specific day and time
+                # Cron format: minute hour * * dayOfWeek
+                cron_expr = f"{minute} {hour} * * {day}"
 
-            # Create unique job ID for this day/time combination
-            job_id = f"rule_{rule.id}_day_{day}_time_{time_str.replace(':', '_')}"
+                # Calculate next run time in the schedule's timezone
+                cron = croniter(cron_expr, now_naive)
+                next_run_naive = cron.get_next(datetime)
 
-            logger.info(f"Scheduling rule {rule.id} ({rule.name}) for {['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][day]} at {time_str} ({timezone}): next run at {next_run_utc} UTC")
+                # Localize to the schedule's timezone, then convert to UTC for storage
+                if hasattr(tz, 'localize'):
+                    # pytz timezone
+                    next_run_tz = tz.localize(next_run_naive)
+                else:
+                    # zoneinfo timezone
+                    next_run_tz = next_run_naive.replace(tzinfo=tz)
 
-            # Schedule the job (rq-scheduler expects UTC datetime)
-            job = scheduler.schedule(
-                scheduled_time=next_run_utc.replace(tzinfo=None),  # rq-scheduler expects naive UTC
-                func=worker.check_campaign_rule,
-                args=[rule.id],
-                interval=interval_seconds,
-                repeat=None,  # Repeat indefinitely
-                id=job_id
-            )
+                # Convert to UTC for storage
+                utc_tz = ZoneInfo("UTC")
+                next_run_utc = next_run_tz.astimezone(utc_tz)
 
-            job_ids.append(job.id)
-            next_runs.append(next_run_utc)
+                # Calculate interval (7 days = 604800 seconds for weekly repeat)
+                interval_seconds = 7 * 24 * 60 * 60
 
-        except (ValueError, KeyError) as e:
-            logger.error(f"Error parsing day/time for rule {rule.id}: day={day_str}, time={time_str}, error={str(e)}")
+                # Create unique job ID for this day/time combination
+                job_id = f"rule_{rule.id}_day_{day}_time_{execution_time.replace(':', '_')}"
+
+                # Schedule the job (rq-scheduler expects UTC datetime)
+                job = scheduler.schedule(
+                    scheduled_time=next_run_utc.replace(tzinfo=None),  # rq-scheduler expects naive UTC
+                    func=worker.check_campaign_rule,
+                    args=[rule.id],
+                    interval=interval_seconds,
+                    repeat=None,  # Repeat indefinitely
+                    id=job_id
+                )
+
+                job_ids.append(job.id)
+                next_runs.append(next_run_utc)
+
+        except (ValueError, KeyError, TypeError) as e:
+            logger.error(f"Error parsing day/time for rule {rule.id}: day={day_str}, time_config={time_config}, error={str(e)}", exc_info=True)
             continue
 
     if not job_ids:
