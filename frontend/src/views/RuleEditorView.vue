@@ -98,7 +98,7 @@ const router = useRouter();
 const toast = useToast();
 
 // Inject page header from AppShell
-const pageHeader = inject('pageHeader', null);
+const pageHeader = inject("pageHeader", null);
 
 // Determine mode from route
 const isEditMode = computed(() => route.name === "rule-edit");
@@ -143,7 +143,7 @@ const availableScopeTypes = computed(() => {
 // Update page header
 function updatePageHeader() {
     if (pageHeader) {
-        pageHeader.title = isEditMode.value ? (ruleForm.value.name || 'Edit Rule') : 'New Rule';
+        pageHeader.title = isEditMode.value ? ruleForm.value.name || "Edit Rule" : "New Rule";
         pageHeader.showBackButton = true;
         pageHeader.onBack = goBack;
     }
@@ -153,7 +153,7 @@ function updatePageHeader() {
 onMounted(async () => {
     // Set initial page header
     updatePageHeader();
-    
+
     if (isEditMode.value && ruleId.value) {
         // Edit mode: Load rule and get account ID from rule data
         loading.value = true;
@@ -198,19 +198,22 @@ onMounted(async () => {
 // Clear page header on unmount
 onUnmounted(() => {
     if (pageHeader) {
-        pageHeader.title = '';
-        pageHeader.subtitle = '';
+        pageHeader.title = "";
+        pageHeader.subtitle = "";
         pageHeader.showBackButton = false;
         pageHeader.onBack = () => {};
     }
 });
 
 // Watch for rule name changes to update header
-watch(() => ruleForm.value.name, () => {
-    if (isEditMode.value) {
-        updatePageHeader();
-    }
-});
+watch(
+    () => ruleForm.value.name,
+    () => {
+        if (isEditMode.value) {
+            updatePageHeader();
+        }
+    },
+);
 
 // Watch form changes and update JSON
 watch(
@@ -225,10 +228,12 @@ watch(
 
 function onRuleLevelChange() {
     // Clear conditions and actions when rule level changes
-    ruleForm.value.conditionGroups = [{
-        groupId: crypto.randomUUID(),
-        conditions: []
-    }];
+    ruleForm.value.conditionGroups = [
+        {
+            groupId: crypto.randomUUID(),
+            conditions: [],
+        },
+    ];
     ruleForm.value.actions = [];
 }
 
@@ -373,59 +378,63 @@ function validateForm() {
     } else {
         const invalidConditions = [];
         let totalConditions = 0;
-        
+
         ruleForm.value.conditionGroups.forEach((group, groupIdx) => {
             if (!group.conditions || group.conditions.length === 0) {
-                invalidConditions.push({ 
-                    groupIndex: groupIdx, 
-                    conditionIndex: null, 
-                    message: `Group ${groupIdx + 1} has no conditions` 
+                invalidConditions.push({
+                    groupIndex: groupIdx,
+                    conditionIndex: null,
+                    message: `Group ${groupIdx + 1} has no conditions`,
                 });
             } else {
                 totalConditions += group.conditions.length;
                 group.conditions.forEach((condition, condIdx) => {
                     if (!condition.field) {
-                        invalidConditions.push({ 
-                            groupIndex: groupIdx, 
-                            conditionIndex: condIdx, 
-                            field: "field", 
-                            message: "Field is required" 
+                        invalidConditions.push({
+                            groupIndex: groupIdx,
+                            conditionIndex: condIdx,
+                            field: "field",
+                            message: "Field is required",
                         });
                     }
                     if (!condition.operator) {
-                        invalidConditions.push({ 
-                            groupIndex: groupIdx, 
-                            conditionIndex: condIdx, 
-                            field: "operator", 
-                            message: "Operator is required" 
+                        invalidConditions.push({
+                            groupIndex: groupIdx,
+                            conditionIndex: condIdx,
+                            field: "operator",
+                            message: "Operator is required",
                         });
                     }
                     if (condition.value === null || condition.value === undefined || condition.value === "") {
-                        invalidConditions.push({ 
-                            groupIndex: groupIdx, 
-                            conditionIndex: condIdx, 
-                            field: "value", 
-                            message: "Value is required" 
+                        invalidConditions.push({
+                            groupIndex: groupIdx,
+                            conditionIndex: condIdx,
+                            field: "value",
+                            message: "Value is required",
                         });
                     }
-                    
+
                     // Validate custom time range if enabled
                     if (condition.time_range && typeof condition.time_range === "object") {
                         if (!condition.time_range.unit) {
-                            invalidConditions.push({ 
-                                groupIndex: groupIdx, 
-                                conditionIndex: condIdx, 
-                                field: "time_range", 
-                                message: "Custom time range unit is required" 
+                            invalidConditions.push({
+                                groupIndex: groupIdx,
+                                conditionIndex: condIdx,
+                                field: "time_range",
+                                message: "Custom time range unit is required",
                             });
                         }
                         if (condition.time_range.unit !== "today") {
-                            if (!condition.time_range.amount || condition.time_range.amount < 1 || isNaN(condition.time_range.amount)) {
-                                invalidConditions.push({ 
-                                    groupIndex: groupIdx, 
-                                    conditionIndex: condIdx, 
-                                    field: "time_range", 
-                                    message: "Custom time range amount is required and must be a valid number" 
+                            if (
+                                !condition.time_range.amount ||
+                                condition.time_range.amount < 1 ||
+                                isNaN(condition.time_range.amount)
+                            ) {
+                                invalidConditions.push({
+                                    groupIndex: groupIdx,
+                                    conditionIndex: condIdx,
+                                    field: "time_range",
+                                    message: "Custom time range amount is required and must be a valid number",
                                 });
                             }
                         }
@@ -433,17 +442,19 @@ function validateForm() {
                 });
             }
         });
-        
+
         if (totalConditions === 0) {
             formErrors.value.conditions = "At least one condition is required";
         } else if (invalidConditions.length > 0) {
-            const messages = invalidConditions.map((c) => {
-                if (c.conditionIndex !== null) {
-                    return `Group ${c.groupIndex + 1}, Condition ${c.conditionIndex + 1}: ${c.message}`;
-                } else {
-                    return c.message;
-                }
-            }).join("; ");
+            const messages = invalidConditions
+                .map((c) => {
+                    if (c.conditionIndex !== null) {
+                        return `Group ${c.groupIndex + 1}, Condition ${c.conditionIndex + 1}: ${c.message}`;
+                    } else {
+                        return c.message;
+                    }
+                })
+                .join("; ");
             formErrors.value.conditions = messages;
         }
     }
@@ -507,16 +518,16 @@ async function handleSave() {
         if (isEditMode.value) {
             await updateRule(ruleId.value, ruleData);
             // Navigate back with success message
-            router.push({ 
-                name: "meta-campaigns", 
-                query: { ruleUpdated: "true", ruleName: ruleForm.value.name } 
+            router.push({
+                name: "meta-campaigns",
+                query: { ruleUpdated: "true", ruleName: ruleForm.value.name },
             });
         } else {
             await createRule(ruleData);
             // Navigate back with success message
-            router.push({ 
-                name: "meta-campaigns", 
-                query: { ruleCreated: "true", ruleName: ruleForm.value.name } 
+            router.push({
+                name: "meta-campaigns",
+                query: { ruleCreated: "true", ruleName: ruleForm.value.name },
             });
         }
     } catch (error) {

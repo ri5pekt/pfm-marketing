@@ -132,5 +132,4 @@ function updateField(value) {
         align-items: start;
     }
 }
-
 </style>

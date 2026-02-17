@@ -81,7 +81,7 @@ body {
 }
 
 .app-loading-content :deep(.p-progress-spinner-circle) {
-    stroke: #0099FF;
+    stroke: #0099ff;
 }
 
 .app-loading-text {

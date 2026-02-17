@@ -90,11 +90,11 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue';
-import { VueDraggable } from 'vue-draggable-plus';
-import Button from 'primevue/button';
-import InputText from 'primevue/inputtext';
-import RuleListItem from './RuleListItem.vue';
+import { ref, computed, watch } from "vue";
+import { VueDraggable } from "vue-draggable-plus";
+import Button from "primevue/button";
+import InputText from "primevue/inputtext";
+import RuleListItem from "./RuleListItem.vue";
 
 const props = defineProps({
     folder: {
@@ -107,29 +107,29 @@ const props = defineProps({
     },
     folderEditName: {
         type: String,
-        default: '',
+        default: "",
     },
 });
 
 const emit = defineEmits([
-    'update:folder',
-    'toggle-folder',
-    'start-edit',
-    'save-edit',
-    'cancel-edit',
-    'delete-folder',
-    'copy-folder-json',
-    'folder-drag-enter',
-    'folder-drag-over',
-    'folder-drag-leave',
-    'folder-drop',
-    'drag-start',
-    'drag-end',
-    'test-rule',
-    'cancel-test',
-    'view-logs',
-    'edit-rule',
-    'delete-rule',
+    "update:folder",
+    "toggle-folder",
+    "start-edit",
+    "save-edit",
+    "cancel-edit",
+    "delete-folder",
+    "copy-folder-json",
+    "folder-drag-enter",
+    "folder-drag-over",
+    "folder-drag-leave",
+    "folder-drop",
+    "drag-start",
+    "drag-end",
+    "test-rule",
+    "cancel-test",
+    "view-logs",
+    "edit-rule",
+    "delete-rule",
 ]);
 
 const folderNameInput = ref(null);
@@ -146,7 +146,7 @@ const localRules = computed({
     get: () => props.folder.rules,
     set: (value) => {
         const updatedFolder = { ...props.folder, rules: value };
-        emit('update:folder', updatedFolder);
+        emit("update:folder", updatedFolder);
     },
 });
 </script>

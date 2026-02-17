@@ -61,9 +61,9 @@
 </template>
 
 <script setup>
-import Select from 'primevue/select'
-import InputNumber from 'primevue/inputnumber'
-import ToggleSwitch from 'primevue/toggleswitch'
+import Select from "primevue/select";
+import InputNumber from "primevue/inputnumber";
+import ToggleSwitch from "primevue/toggleswitch";
 
 const props = defineProps({
     modelValue: {
@@ -74,22 +74,22 @@ const props = defineProps({
         type: Object,
         default: () => ({}),
     },
-})
+});
 
-const emit = defineEmits(['update:modelValue'])
+const emit = defineEmits(["update:modelValue"]);
 
 const timeRangeUnitOptions = [
-    { label: 'Minutes', value: 'minutes' },
-    { label: 'Hours', value: 'hours' },
-    { label: 'Days', value: 'days' },
-    { label: 'Today only', value: 'today' },
-]
+    { label: "Minutes", value: "minutes" },
+    { label: "Hours", value: "hours" },
+    { label: "Days", value: "days" },
+    { label: "Today only", value: "today" },
+];
 
 function update(field, value) {
-    emit('update:modelValue', {
+    emit("update:modelValue", {
         ...props.modelValue,
         [field]: value,
-    })
+    });
 }
 </script>
 
@@ -153,4 +153,3 @@ function update(field, value) {
     font-size: 0.875rem;
 }
 </style>
-

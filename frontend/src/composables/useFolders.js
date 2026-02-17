@@ -50,19 +50,19 @@ export function useFolders() {
     async function createFolder(name, accountId) {
         try {
             // Validate inputs before making API call
-            if (!name || typeof name !== 'string' || !name.trim()) {
-                throw new Error('Folder name is required');
+            if (!name || typeof name !== "string" || !name.trim()) {
+                throw new Error("Folder name is required");
             }
             if (!accountId) {
-                throw new Error('Ad account ID is required');
+                throw new Error("Ad account ID is required");
             }
-            
+
             const newFolder = await apiCreateFolder({
                 ad_account_id: accountId,
                 name: name.trim(),
                 position: folders.value.length,
             });
-            
+
             folders.value.push(newFolder);
             toast.add({
                 severity: "success",
@@ -111,17 +111,21 @@ export function useFolders() {
 
     async function deleteFolder(folder) {
         const rulesCount = folder.rules?.length || 0;
-        const warningMessage = rulesCount > 0 
-            ? `Are you sure you want to delete this folder and permanently delete all ${rulesCount} rule${rulesCount === 1 ? '' : 's'} inside it?\n\nThis action cannot be undone.`
-            : "Are you sure you want to delete this folder?";
-        
+        const warningMessage =
+            rulesCount > 0
+                ? `Are you sure you want to delete this folder and permanently delete all ${rulesCount} rule${rulesCount === 1 ? "" : "s"} inside it?\n\nThis action cannot be undone.`
+                : "Are you sure you want to delete this folder?";
+
         return new Promise((resolve, reject) => {
             confirm.require({
                 message: warningMessage,
                 header: "Delete Folder & Rules",
                 icon: "pi pi-exclamation-triangle",
                 acceptClass: "p-button-danger",
-                acceptLabel: rulesCount > 0 ? `Delete Folder & ${rulesCount} Rule${rulesCount === 1 ? '' : 's'}` : "Delete Folder",
+                acceptLabel:
+                    rulesCount > 0
+                        ? `Delete Folder & ${rulesCount} Rule${rulesCount === 1 ? "" : "s"}`
+                        : "Delete Folder",
                 rejectLabel: "Cancel",
                 accept: async () => {
                     try {
@@ -130,9 +134,10 @@ export function useFolders() {
                         toast.add({
                             severity: "success",
                             summary: "Success",
-                            detail: rulesCount > 0 
-                                ? `Folder and ${rulesCount} rule${rulesCount === 1 ? '' : 's'} deleted successfully`
-                                : "Folder deleted successfully",
+                            detail:
+                                rulesCount > 0
+                                    ? `Folder and ${rulesCount} rule${rulesCount === 1 ? "" : "s"} deleted successfully`
+                                    : "Folder deleted successfully",
                             life: 3000,
                         });
                         resolve(true);

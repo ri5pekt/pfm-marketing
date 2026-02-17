@@ -79,7 +79,13 @@ import StatusValueInput from "./StatusValueInput.vue";
 import NumericValueInput from "./NumericValueInput.vue";
 import TextValueInput from "./TextValueInput.vue";
 import { isFieldStatus, isFieldNumeric } from "@/utils/conditionFieldConfig";
-import { getValuePlaceholder, isSpecialValue, getSpecialBase, getSpecialMul, getSpecialValueLabel } from "@/utils/specialValues";
+import {
+    getValuePlaceholder,
+    isSpecialValue,
+    getSpecialBase,
+    getSpecialMul,
+    getSpecialValueLabel,
+} from "@/utils/specialValues";
 
 const props = defineProps({
     field: {
@@ -105,15 +111,13 @@ const emit = defineEmits(["update:value"]);
 
 // Comparison type options
 const comparisonTypeOptions = computed(() => {
-    const options = [
-        { label: "Value", value: "value" },
-    ];
-    
+    const options = [{ label: "Value", value: "value" }];
+
     // Only show Metric option if special values are available
     if (props.availableSpecialValues.length > 0 && !isStatusField.value) {
         options.push({ label: "Metric", value: "metric" });
     }
-    
+
     return options;
 });
 
