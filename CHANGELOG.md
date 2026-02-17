@@ -77,6 +77,7 @@ All notable changes to this project will be documented in this file.
 - Fixed campaign_name_doesnt_contain scope filter not showing keywords input field (missing template block in RuleLevelAndScope.vue)
 - Fixed folder creation error after import (duplicate event emission with missing name parameter)
 - Fixed error message display showing [object Object] instead of actual error text (improved http.js error handling)
+- Fixed folder name editing being interrupted by polling refresh (skip folder reload when editing)
 - Production cleanup: Removed debug console.log statements from all components
 - Suppressed Vite HMR logs in development (set logLevel to 'warn')
 

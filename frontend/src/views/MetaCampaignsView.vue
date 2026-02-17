@@ -402,8 +402,14 @@ onMounted(async () => {
     // Start polling for rules updates every 5 seconds
     rulesPollingInterval = setInterval(() => {
         if (selectedAccount.value) {
-            loadRules(selectedAccount.value.id, true);
-            loadFolders(selectedAccount.value.id, true);
+            // Check if any folder is currently being edited
+            const isEditingFolder = folders.value.some(folder => folder.editing === true);
+            
+            // Only reload if no folder is being edited
+            if (!isEditingFolder) {
+                loadRules(selectedAccount.value.id, true);
+                loadFolders(selectedAccount.value.id, true);
+            }
         }
         loadAllRules();
     }, 5000);
