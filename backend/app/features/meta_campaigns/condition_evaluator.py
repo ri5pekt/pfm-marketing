@@ -143,12 +143,12 @@ def calculate_metric_from_insights(insights: Dict, field: str) -> float:
         """
         Average Order Value (AOV):
           Total purchase value / number of purchases
-        
+
         This is the average revenue per purchase/conversion.
         """
         purchase_value = calculate_metric_from_insights(insights, "purchase_value")
         purchase_count = calculate_metric_from_insights(insights, "purchase_count")
-        
+
         if purchase_count > 0:
             return purchase_value / purchase_count
         return 0

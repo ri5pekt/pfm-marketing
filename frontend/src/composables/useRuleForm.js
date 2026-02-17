@@ -29,10 +29,12 @@ export function useRuleForm() {
         timeRangeUnit: null,
         timeRangeAmount: null,
         excludeToday: true,
-        conditionGroups: [{
-            groupId: crypto.randomUUID(),
-            conditions: []
-        }],
+        conditionGroups: [
+            {
+                groupId: crypto.randomUUID(),
+                conditions: [],
+            },
+        ],
         actions: [],
         schedulePeriod: null,
         scheduleFrequency: 1,
@@ -57,10 +59,12 @@ export function useRuleForm() {
             timeRangeUnit: null,
             timeRangeAmount: null,
             excludeToday: true,
-            conditionGroups: [{
-                groupId: crypto.randomUUID(),
-                conditions: []
-            }],
+            conditionGroups: [
+                {
+                    groupId: crypto.randomUUID(),
+                    conditions: [],
+                },
+            ],
             actions: [],
             schedulePeriod: null,
             scheduleFrequency: 1,
@@ -133,8 +137,14 @@ export function useRuleForm() {
             }
         }
         if (conditions.campaign_name_doesnt_contain) {
-            if (Array.isArray(conditions.campaign_name_doesnt_contain) && conditions.campaign_name_doesnt_contain.length > 0) {
-                scopeFilters.push({ type: "campaign_name_doesnt_contain", value: conditions.campaign_name_doesnt_contain });
+            if (
+                Array.isArray(conditions.campaign_name_doesnt_contain) &&
+                conditions.campaign_name_doesnt_contain.length > 0
+            ) {
+                scopeFilters.push({
+                    type: "campaign_name_doesnt_contain",
+                    value: conditions.campaign_name_doesnt_contain,
+                });
             } else if (
                 typeof conditions.campaign_name_doesnt_contain === "string" &&
                 conditions.campaign_name_doesnt_contain.trim().length > 0
@@ -158,7 +168,7 @@ export function useRuleForm() {
 
         // Parse condition groups (handle both new and old formats)
         let conditionGroups = [];
-        
+
         // New format: condition_groups
         if (conditions.condition_groups) {
             conditionGroups = conditions.condition_groups.map((group) => ({
@@ -170,7 +180,12 @@ export function useRuleForm() {
                         value = { base: value, mul: 1 };
                     }
                     // Normalize structured values missing multiplier
-                    if (typeof value === "object" && value && typeof value.base === "string" && value.mul === undefined) {
+                    if (
+                        typeof value === "object" &&
+                        value &&
+                        typeof value.base === "string" &&
+                        value.mul === undefined
+                    ) {
                         value = { ...value, mul: 1 };
                     }
                     const conditionObj = {
@@ -179,7 +194,12 @@ export function useRuleForm() {
                         value,
                     };
                     // Include time_range if condition has custom time range
-                    if (c.time_range && typeof c.time_range === "object" && c.time_range !== null && c.time_range.unit) {
+                    if (
+                        c.time_range &&
+                        typeof c.time_range === "object" &&
+                        c.time_range !== null &&
+                        c.time_range.unit
+                    ) {
                         conditionObj.time_range = {
                             unit: c.time_range.unit,
                             amount: c.time_range.amount,
@@ -187,7 +207,7 @@ export function useRuleForm() {
                         };
                     }
                     return conditionObj;
-                })
+                }),
             }));
         }
         // Old format: flat conditions array (backward compatibility)
@@ -218,17 +238,21 @@ export function useRuleForm() {
                 return conditionObj;
             });
             // Wrap in single group for backward compatibility
-            conditionGroups = [{
-                groupId: crypto.randomUUID(),
-                conditions: conditionsArray
-            }];
+            conditionGroups = [
+                {
+                    groupId: crypto.randomUUID(),
+                    conditions: conditionsArray,
+                },
+            ];
         }
         // Default: empty group
         else {
-            conditionGroups = [{
-                groupId: crypto.randomUUID(),
-                conditions: []
-            }];
+            conditionGroups = [
+                {
+                    groupId: crypto.randomUUID(),
+                    conditions: [],
+                },
+            ];
         }
 
         // Parse actions array
@@ -287,7 +311,7 @@ export function useRuleForm() {
     function addConditionGroup() {
         ruleForm.value.conditionGroups.push({
             groupId: crypto.randomUUID(),
-            conditions: []
+            conditions: [],
         });
     }
 
@@ -296,25 +320,25 @@ export function useRuleForm() {
         if (ruleForm.value.conditionGroups.length <= 1) {
             return;
         }
-        const index = ruleForm.value.conditionGroups.findIndex(g => g.groupId === groupId);
+        const index = ruleForm.value.conditionGroups.findIndex((g) => g.groupId === groupId);
         if (index !== -1) {
             ruleForm.value.conditionGroups.splice(index, 1);
         }
     }
 
     function addConditionToGroup(groupId) {
-        const group = ruleForm.value.conditionGroups.find(g => g.groupId === groupId);
+        const group = ruleForm.value.conditionGroups.find((g) => g.groupId === groupId);
         if (group) {
             group.conditions.push({
                 field: null,
                 operator: null,
-                value: null
+                value: null,
             });
         }
     }
 
     function removeConditionFromGroup(groupId, conditionIndex) {
-        const group = ruleForm.value.conditionGroups.find(g => g.groupId === groupId);
+        const group = ruleForm.value.conditionGroups.find((g) => g.groupId === groupId);
         if (group && group.conditions.length > conditionIndex) {
             group.conditions.splice(conditionIndex, 1);
         }

@@ -20,5 +20,5 @@ export default defineConfig({
     build: {
         sourcemap: true,
     },
-    logLevel: 'warn', // Suppress Vite info logs like "[vite] connecting..."
+    logLevel: "warn", // Suppress Vite info logs like "[vite] connecting..."
 });

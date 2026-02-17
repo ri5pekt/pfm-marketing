@@ -14,7 +14,8 @@
             <div v-if="folders.length > 0" class="drag-hint">
                 <i class="pi pi-info-circle"></i>
                 <span>
-                    Tip: Drag folders by the <i class="pi pi-bars"></i> handle to reorder, or drag rules into/out of folders
+                    Tip: Drag folders by the <i class="pi pi-bars"></i> handle to reorder, or drag rules into/out of
+                    folders
                 </span>
             </div>
 
@@ -57,7 +58,7 @@
                         @copy-folder-json="folderMgmt.handleCopyFolderJson($event)"
                         @folder-drag-enter="dragDrop.handleFolderDragEnter($event)"
                         @folder-drag-over="dragDrop.handleFolderDragOver($event)"
-                        @folder-drag-leave="dragDrop.handleFolderDragLeave($event.folder, $event.e)"
+                        @folder-drag-leave="(folder, e) => dragDrop.handleFolderDragLeave(folder, e)"
                         @folder-drop="dragDrop.handleFolderDrop($event)"
                         @drag-start="dragDrop.onDragStart()"
                         @drag-end="dragDrop.onRuleDragEnd(unifiedItems)"
@@ -77,7 +78,7 @@
             v-model:folder-name="folderMgmt.newFolderName.value"
             @create="folderMgmt.handleCreateFolder()"
         />
-        
+
         <!-- Import Folder Dialog -->
         <ImportFolderDialog
             v-model:visible="showImportDialog"
@@ -88,25 +89,25 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue';
-import { VueDraggable } from 'vue-draggable-plus';
-import ProgressSpinner from 'primevue/progressspinner';
-import { useToast } from 'primevue/usetoast';
+import { ref, watch } from "vue";
+import { VueDraggable } from "vue-draggable-plus";
+import ProgressSpinner from "primevue/progressspinner";
+import { useToast } from "primevue/usetoast";
 
 // Components
-import RulesToolbar from './rules/RulesToolbar.vue';
-import RulesUngroupedSection from './rules/RulesUngroupedSection.vue';
-import RulesFolderItem from './rules/RulesFolderItem.vue';
-import NewFolderDialog from './dialogs/NewFolderDialog.vue';
-import ImportFolderDialog from './dialogs/ImportFolderDialog.vue';
+import RulesToolbar from "./rules/RulesToolbar.vue";
+import RulesUngroupedSection from "./rules/RulesUngroupedSection.vue";
+import RulesFolderItem from "./rules/RulesFolderItem.vue";
+import NewFolderDialog from "./dialogs/NewFolderDialog.vue";
+import ImportFolderDialog from "./dialogs/ImportFolderDialog.vue";
 
 // Composables
-import { useRuleDragDrop } from '@/composables/useRuleDragDrop';
-import { useFolderManagement } from '@/composables/useFolderManagement';
-import { useRuleActions } from '@/composables/useRuleActions';
+import { useRuleDragDrop } from "@/composables/useRuleDragDrop";
+import { useFolderManagement } from "@/composables/useFolderManagement";
+import { useRuleActions } from "@/composables/useRuleActions";
 
 // API
-import { importFolder } from '@/api/metaCampaignsApi';
+import { importFolder } from "@/api/metaCampaignsApi";
 
 const props = defineProps({
     selectedAccount: {
@@ -132,16 +133,16 @@ const props = defineProps({
 });
 
 const emit = defineEmits([
-    'test-rule',
-    'cancel-test',
-    'view-logs',
-    'delete-rule',
-    'create-folder',
-    'rename-folder',
-    'delete-folder',
-    'folder-imported',
-    'reorder-folders',
-    'reorder-rules',
+    "test-rule",
+    "cancel-test",
+    "view-logs",
+    "delete-rule",
+    "create-folder",
+    "rename-folder",
+    "delete-folder",
+    "folder-imported",
+    "reorder-folders",
+    "reorder-rules",
 ]);
 
 // Initialize composables
@@ -203,8 +204,8 @@ function organizeItems() {
     // Add ungrouped rules container (always position 0 or first)
     if (rootRulesArray.length > 0 || dragDrop.isDragging.value) {
         items.push({
-            type: 'ungrouped-container',
-            id: 'ungrouped',
+            type: "ungrouped-container",
+            id: "ungrouped",
             position: -1, // Always first
             data: rootRulesArray,
         });
@@ -213,7 +214,7 @@ function organizeItems() {
     // Add all folders as items
     foldersWithRules.value.forEach((folder) => {
         items.push({
-            type: 'folder',
+            type: "folder",
             id: folder.id,
             position: folder.position || 0,
             data: folder,
@@ -232,7 +233,7 @@ function updateFolderData(item, updatedFolder) {
 
 function handleSaveEditFolder(folder, newName) {
     if (newName && newName.trim() !== folder.name) {
-        emit('rename-folder', folder.id, newName.trim());
+        emit("rename-folder", folder.id, newName.trim());
     }
     folder.editing = false;
 }
@@ -245,23 +246,23 @@ function openImportDialog() {
 async function handleImportFolder(folderJson) {
     try {
         const result = await importFolder(props.selectedAccount.id, folderJson);
-        
+
         toast.add({
-            severity: 'success',
-            summary: 'Success',
+            severity: "success",
+            summary: "Success",
             detail: `Imported folder "${result.folder_name}" with ${result.rules_imported} rules`,
             life: 5000,
         });
-        
+
         // Close dialog and trigger reload
         showImportDialog.value = false;
-        emit('folder-imported'); // Trigger parent reload after import
+        emit("folder-imported"); // Trigger parent reload after import
     } catch (error) {
-        console.error('Failed to import folder:', error);
+        console.error("Failed to import folder:", error);
         toast.add({
-            severity: 'error',
-            summary: 'Import Failed',
-            detail: error.message || 'Failed to import folder',
+            severity: "error",
+            summary: "Import Failed",
+            detail: error.message || "Failed to import folder",
             life: 5000,
         });
     }

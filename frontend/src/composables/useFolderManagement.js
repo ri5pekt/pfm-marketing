@@ -1,6 +1,6 @@
-import { ref, nextTick } from 'vue';
-import { useToast } from 'primevue/usetoast';
-import { exportFolder } from '@/api/metaCampaignsApi';
+import { ref, nextTick } from "vue";
+import { useToast } from "primevue/usetoast";
+import { exportFolder } from "@/api/metaCampaignsApi";
 
 /**
  * Composable for folder CRUD operations
@@ -9,23 +9,23 @@ import { exportFolder } from '@/api/metaCampaignsApi';
 export function useFolderManagement(emit) {
     const toast = useToast();
     const showNewFolderDialog = ref(false);
-    const newFolderName = ref('');
-    const folderEditName = ref('');
+    const newFolderName = ref("");
+    const folderEditName = ref("");
     const folderNameInput = ref(null);
 
     function openNewFolderDialog() {
         showNewFolderDialog.value = true;
-        newFolderName.value = '';
+        newFolderName.value = "";
     }
 
     function closeNewFolderDialog() {
         showNewFolderDialog.value = false;
-        newFolderName.value = '';
+        newFolderName.value = "";
     }
 
     function handleCreateFolder() {
         if (newFolderName.value.trim()) {
-            emit('create-folder', newFolderName.value.trim());
+            emit("create-folder", newFolderName.value.trim());
             closeNewFolderDialog();
         }
     }
@@ -42,18 +42,18 @@ export function useFolderManagement(emit) {
 
     function saveEditFolder(folder) {
         if (folderEditName.value && folderEditName.value.trim() !== folder.name) {
-            emit('rename-folder', folder.id, folderEditName.value.trim());
+            emit("rename-folder", folder.id, folderEditName.value.trim());
         }
         folder.editing = false;
     }
 
     function cancelEditFolder(folder) {
         folder.editing = false;
-        folderEditName.value = '';
+        folderEditName.value = "";
     }
 
-    function handleDeleteFolder(folderId) {
-        emit('delete-folder', folderId);
+    function handleDeleteFolder(folder) {
+        emit("delete-folder", folder);
     }
 
     function toggleFolder(folder, folderExpandedState) {
@@ -66,25 +66,25 @@ export function useFolderManagement(emit) {
         try {
             // Fetch folder export data
             const exportData = await exportFolder(folderId);
-            
+
             // Convert to formatted JSON string
             const jsonString = JSON.stringify(exportData, null, 2);
-            
+
             // Copy to clipboard
             await navigator.clipboard.writeText(jsonString);
-            
+
             toast.add({
-                severity: 'success',
-                summary: 'Success',
+                severity: "success",
+                summary: "Success",
                 detail: `Folder structure copied to clipboard! (${exportData.rules_count} rules)`,
                 life: 3000,
             });
         } catch (error) {
-            console.error('Failed to export folder:', error);
+            console.error("Failed to export folder:", error);
             toast.add({
-                severity: 'error',
-                summary: 'Error',
-                detail: error.message || 'Failed to export folder',
+                severity: "error",
+                summary: "Error",
+                detail: error.message || "Failed to export folder",
                 life: 5000,
             });
         }

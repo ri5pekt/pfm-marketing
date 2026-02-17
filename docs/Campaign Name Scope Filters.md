@@ -13,11 +13,13 @@ Campaign name scope filters allow you to narrow down which campaigns (and their 
 **Purpose:** Include ONLY items from campaigns whose names contain any of the specified keywords.
 
 **Use Cases:**
+
 - Target specific campaign groups (e.g., "Prospecting", "Retargeting")
 - Focus on seasonal campaigns (e.g., "Black Friday", "Summer Sale")
 - Filter by campaign naming conventions (e.g., "TOF", "BOF", "Scaling")
 
 **Example:**
+
 ```
 Keywords: ["Prospecting", "TOF"]
 Result: Only items from campaigns like "TOF - Prospecting - Q1" or "Prospecting Lookalike" will be evaluated
@@ -30,11 +32,13 @@ Result: Only items from campaigns like "TOF - Prospecting - Q1" or "Prospecting 
 **Purpose:** Exclude items from campaigns whose names contain any of the specified keywords.
 
 **Use Cases:**
+
 - Exclude specific campaign types (e.g., "Winback", "Test")
 - Skip campaigns with certain tags (e.g., "Paused", "Archive")
 - Filter out campaigns that shouldn't be automated (e.g., "Manual")
 
 **Example:**
+
 ```
 Keywords: ["Winback", "Test"]
 Result: Items from campaigns like "Retargeting - Winback" or "Test Campaign 1" will be excluded
@@ -46,6 +50,7 @@ All other campaigns will be evaluated
 You can use both filters together for precise targeting:
 
 **Example: Target prospecting campaigns but exclude tests**
+
 ```
 Campaign Name Contains: ["Prospecting"]
 Campaign Name Doesn't Contain: ["Test", "Draft"]
@@ -63,6 +68,7 @@ These filters are **pre-resolved** before the main data fetch, meaning:
 3. **Lower Costs**: Fewer API calls = lower Facebook API usage
 
 **Example Performance:**
+
 - Without optimization: 15-20 API calls (fetch all ads → filter in memory)
 - With campaign name filters: 2-3 API calls (filter campaigns → fetch only relevant ads)
 

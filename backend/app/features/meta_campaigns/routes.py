@@ -180,11 +180,11 @@ def delete_folder(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    """Delete a folder (rules move to root level)"""
+    """Delete a folder and all rules inside it (cascade delete)"""
     success = service.delete_folder(db, folder_id)
     if not success:
         raise HTTPException(status_code=404, detail="Folder not found")
-    return {"message": "Folder deleted successfully"}
+    return {"message": "Folder and all its rules deleted successfully"}
 
 
 @router.get("/folders/{folder_id}/export")

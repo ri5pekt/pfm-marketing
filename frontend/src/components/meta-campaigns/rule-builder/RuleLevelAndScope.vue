@@ -29,11 +29,7 @@
                 <p>No scope filters defined.</p>
             </div>
             <div v-else class="scope-filters-list">
-                <div
-                    v-for="(scope, index) in modelValue.scopeFilters"
-                    :key="index"
-                    class="scope-filter-item"
-                >
+                <div v-for="(scope, index) in modelValue.scopeFilters" :key="index" class="scope-filter-item">
                     <div class="scope-filter-header">
                         <strong>{{ getScopeTypeLabel(scope.type) }}</strong>
                         <Button
@@ -60,27 +56,22 @@
                                         errors.scopeFilters &&
                                         (!Array.isArray(scope.value) || scope.value.length === 0),
                                 }"
-                                @add="() => { if (errors.scopeFilters) emit('clearScopeError'); }"
+                                @add="
+                                    () => {
+                                        if (errors.scopeFilters) emit('clearScopeError');
+                                    }
+                                "
                                 @remove="() => {}"
                             />
                             <small
-                                v-if="
-                                    errors.scopeFilters &&
-                                    (!Array.isArray(scope.value) || scope.value.length === 0)
-                                "
+                                v-if="errors.scopeFilters && (!Array.isArray(scope.value) || scope.value.length === 0)"
                                 class="p-error"
                             >
                                 Please add at least one keyword by typing and pressing Enter
                             </small>
-                            <small v-else class="p-text-secondary"
-                                >Type a keyword and press Enter to add it</small
-                            >
+                            <small v-else class="p-text-secondary">Type a keyword and press Enter to add it</small>
                             <small
-                                v-if="
-                                    scope.value &&
-                                    Array.isArray(scope.value) &&
-                                    scope.value.length > 0
-                                "
+                                v-if="scope.value && Array.isArray(scope.value) && scope.value.length > 0"
                                 class="p-text-secondary mt-1 block"
                             >
                                 Added keywords ({{ scope.value.length }}):
@@ -94,8 +85,8 @@
                                     modelValue.ruleLevel === "ad"
                                         ? "Ad ID"
                                         : modelValue.ruleLevel === "ad_set"
-                                        ? "Ad Set ID"
-                                        : "IDs"
+                                          ? "Ad Set ID"
+                                          : "IDs"
                                 }}
                                 *</label
                             >
@@ -109,27 +100,22 @@
                                         errors.scopeFilters &&
                                         (!Array.isArray(scope.value) || scope.value.length === 0),
                                 }"
-                                @add="() => { if (errors.scopeFilters) emit('clearScopeError'); }"
+                                @add="
+                                    () => {
+                                        if (errors.scopeFilters) emit('clearScopeError');
+                                    }
+                                "
                                 @remove="() => {}"
                             />
                             <small
-                                v-if="
-                                    errors.scopeFilters &&
-                                    (!Array.isArray(scope.value) || scope.value.length === 0)
-                                "
+                                v-if="errors.scopeFilters && (!Array.isArray(scope.value) || scope.value.length === 0)"
                                 class="p-error"
                             >
                                 Please add at least one ID by typing and pressing Enter
                             </small>
-                            <small v-else class="p-text-secondary"
-                                >Type an ID and press Enter to add it</small
-                            >
+                            <small v-else class="p-text-secondary">Type an ID and press Enter to add it</small>
                             <small
-                                v-if="
-                                    scope.value &&
-                                    Array.isArray(scope.value) &&
-                                    scope.value.length > 0
-                                "
+                                v-if="scope.value && Array.isArray(scope.value) && scope.value.length > 0"
                                 class="p-text-secondary mt-1 block"
                             >
                                 Added IDs ({{ scope.value.length }}): {{ scope.value.join(", ") }}
@@ -148,27 +134,22 @@
                                         errors.scopeFilters &&
                                         (!Array.isArray(scope.value) || scope.value.length === 0),
                                 }"
-                                @add="() => { if (errors.scopeFilters) emit('clearScopeError'); }"
+                                @add="
+                                    () => {
+                                        if (errors.scopeFilters) emit('clearScopeError');
+                                    }
+                                "
                                 @remove="() => {}"
                             />
                             <small
-                                v-if="
-                                    errors.scopeFilters &&
-                                    (!Array.isArray(scope.value) || scope.value.length === 0)
-                                "
+                                v-if="errors.scopeFilters && (!Array.isArray(scope.value) || scope.value.length === 0)"
                                 class="p-error"
                             >
                                 Please add at least one keyword by typing and pressing Enter
                             </small>
-                            <small v-else class="p-text-secondary"
-                                >Type a keyword and press Enter to add it</small
-                            >
+                            <small v-else class="p-text-secondary">Type a keyword and press Enter to add it</small>
                             <small
-                                v-if="
-                                    scope.value &&
-                                    Array.isArray(scope.value) &&
-                                    scope.value.length > 0
-                                "
+                                v-if="scope.value && Array.isArray(scope.value) && scope.value.length > 0"
                                 class="p-text-secondary mt-1 block"
                             >
                                 Added keywords ({{ scope.value.length }}):
@@ -188,27 +169,22 @@
                                         errors.scopeFilters &&
                                         (!Array.isArray(scope.value) || scope.value.length === 0),
                                 }"
-                                @add="() => { if (errors.scopeFilters) emit('clearScopeError'); }"
+                                @add="
+                                    () => {
+                                        if (errors.scopeFilters) emit('clearScopeError');
+                                    }
+                                "
                                 @remove="() => {}"
                             />
                             <small
-                                v-if="
-                                    errors.scopeFilters &&
-                                    (!Array.isArray(scope.value) || scope.value.length === 0)
-                                "
+                                v-if="errors.scopeFilters && (!Array.isArray(scope.value) || scope.value.length === 0)"
                                 class="p-error"
                             >
                                 Please add at least one keyword by typing and pressing Enter
                             </small>
-                            <small v-else class="p-text-secondary"
-                                >Type a keyword and press Enter to add it</small
-                            >
+                            <small v-else class="p-text-secondary">Type a keyword and press Enter to add it</small>
                             <small
-                                v-if="
-                                    scope.value &&
-                                    Array.isArray(scope.value) &&
-                                    scope.value.length > 0
-                                "
+                                v-if="scope.value && Array.isArray(scope.value) && scope.value.length > 0"
                                 class="p-text-secondary mt-1 block"
                             >
                                 Added keywords ({{ scope.value.length }}):
@@ -228,27 +204,22 @@
                                         errors.scopeFilters &&
                                         (!Array.isArray(scope.value) || scope.value.length === 0),
                                 }"
-                                @add="() => { if (errors.scopeFilters) emit('clearScopeError'); }"
+                                @add="
+                                    () => {
+                                        if (errors.scopeFilters) emit('clearScopeError');
+                                    }
+                                "
                                 @remove="() => {}"
                             />
                             <small
-                                v-if="
-                                    errors.scopeFilters &&
-                                    (!Array.isArray(scope.value) || scope.value.length === 0)
-                                "
+                                v-if="errors.scopeFilters && (!Array.isArray(scope.value) || scope.value.length === 0)"
                                 class="p-error"
                             >
                                 Please add at least one campaign ID by typing and pressing Enter
                             </small>
-                            <small v-else class="p-text-secondary"
-                                >Type a campaign ID and press Enter to add it</small
-                            >
+                            <small v-else class="p-text-secondary">Type a campaign ID and press Enter to add it</small>
                             <small
-                                v-if="
-                                    scope.value &&
-                                    Array.isArray(scope.value) &&
-                                    scope.value.length > 0
-                                "
+                                v-if="scope.value && Array.isArray(scope.value) && scope.value.length > 0"
                                 class="p-text-secondary mt-1 block"
                             >
                                 Added campaign IDs ({{ scope.value.length }}):
@@ -461,4 +432,3 @@ function onRuleLevelChange() {
     margin-top: 1rem;
 }
 </style>
-

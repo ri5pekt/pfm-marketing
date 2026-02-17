@@ -1,84 +1,83 @@
 // Use relative path in production (nginx will proxy /api to backend)
 // Use environment variable or localhost for development
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (import.meta.env.PROD ? '/api' : 'http://localhost:8000/api')
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (import.meta.env.PROD ? "/api" : "http://localhost:8000/api");
 
 function getAuthToken() {
-  return localStorage.getItem('pfm_token')
+    return localStorage.getItem("pfm_token");
 }
 
 export async function httpRequest(url, options = {}) {
-  const token = getAuthToken()
+    const token = getAuthToken();
 
-  const headers = {
-    'Content-Type': 'application/json',
-    ...options.headers
-  }
+    const headers = {
+        "Content-Type": "application/json",
+        ...options.headers,
+    };
 
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`
-  }
-
-  const config = {
-    ...options,
-    headers,
-    signal: options.signal // Support AbortController signal
-  }
-
-  try {
-    const response = await fetch(`${API_BASE_URL}${url}`, config)
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ detail: 'Request failed' }))
-      // Ensure error message is a string, handle objects/arrays
-      let errorMessage = 'Request failed'
-      if (typeof errorData.detail === 'string') {
-        errorMessage = errorData.detail
-      } else if (typeof errorData.detail === 'object') {
-        errorMessage = JSON.stringify(errorData.detail)
-      } else if (errorData.detail) {
-        errorMessage = String(errorData.detail)
-      } else {
-        errorMessage = `HTTP error! status: ${response.status}`
-      }
-      const error = new Error(errorMessage)
-      error.status = response.status // Attach status code to error
-      error.data = errorData // Attach full error data for debugging
-      throw error
+    if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
     }
 
-    return await response.json()
-  } catch (error) {
-    // Check if error is due to abort
-    if (error.name === 'AbortError' || error.message === 'The user aborted a request.') {
-      const abortError = new Error('Request cancelled')
-      abortError.name = 'AbortError'
-      throw abortError
+    const config = {
+        ...options,
+        headers,
+        signal: options.signal, // Support AbortController signal
+    };
+
+    try {
+        const response = await fetch(`${API_BASE_URL}${url}`, config);
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ detail: "Request failed" }));
+            // Ensure error message is a string, handle objects/arrays
+            let errorMessage = "Request failed";
+            if (typeof errorData.detail === "string") {
+                errorMessage = errorData.detail;
+            } else if (typeof errorData.detail === "object") {
+                errorMessage = JSON.stringify(errorData.detail);
+            } else if (errorData.detail) {
+                errorMessage = String(errorData.detail);
+            } else {
+                errorMessage = `HTTP error! status: ${response.status}`;
+            }
+            const error = new Error(errorMessage);
+            error.status = response.status; // Attach status code to error
+            error.data = errorData; // Attach full error data for debugging
+            throw error;
+        }
+
+        return await response.json();
+    } catch (error) {
+        // Check if error is due to abort
+        if (error.name === "AbortError" || error.message === "The user aborted a request.") {
+            const abortError = new Error("Request cancelled");
+            abortError.name = "AbortError";
+            throw abortError;
+        }
+        throw error;
     }
-    throw error
-  }
 }
 
 export function get(url, options = {}) {
-  return httpRequest(url, { ...options, method: 'GET' })
+    return httpRequest(url, { ...options, method: "GET" });
 }
 
 export function post(url, data, options = {}) {
-  return httpRequest(url, {
-    ...options,
-    method: 'POST',
-    body: JSON.stringify(data)
-  })
+    return httpRequest(url, {
+        ...options,
+        method: "POST",
+        body: JSON.stringify(data),
+    });
 }
 
 export function put(url, data, options = {}) {
-  return httpRequest(url, {
-    ...options,
-    method: 'PUT',
-    body: JSON.stringify(data)
-  })
+    return httpRequest(url, {
+        ...options,
+        method: "PUT",
+        body: JSON.stringify(data),
+    });
 }
 
 export function del(url, options = {}) {
-  return httpRequest(url, { ...options, method: 'DELETE' })
+    return httpRequest(url, { ...options, method: "DELETE" });
 }
-

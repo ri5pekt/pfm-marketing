@@ -145,12 +145,12 @@ def execute_action(account_id: str, access_token: str, rule_level: str, items: L
                     "access_token": access_token
                 }
                 response = requests.post(url, params=params, timeout=30)
-                
+
                 # Track API call
                 if api_call_counter is not None:
                     api_call_counter["total"] += 1
                     api_call_counter["actions"] += 1
-                
+
                 response.raise_for_status()
                 check_rate_limit_headers(response, "write", account_id=account_id)
                 result["success"] = True
@@ -164,12 +164,12 @@ def execute_action(account_id: str, access_token: str, rule_level: str, items: L
                     url = f"{base_url}/{item_id}"
                     params = {"fields": "daily_budget", "access_token": access_token}
                     get_response = requests.get(url, params=params, timeout=30)
-                    
+
                     # Track API call
                     if api_call_counter is not None:
                         api_call_counter["total"] += 1
                         api_call_counter["actions"] += 1
-                    
+
                     get_response.raise_for_status()
                     check_rate_limit_headers(get_response, "read", account_id=account_id)
                     adset_data = get_response.json()
@@ -198,12 +198,12 @@ def execute_action(account_id: str, access_token: str, rule_level: str, items: L
                                 "access_token": access_token
                             }
                             response = requests.post(url, params=params, timeout=30)
-                            
+
                             # Track API call
                             if api_call_counter is not None:
                                 api_call_counter["total"] += 1
                                 api_call_counter["actions"] += 1
-                            
+
                             response.raise_for_status()
                             check_rate_limit_headers(response, "write")
                             result["success"] = True
@@ -228,12 +228,12 @@ def execute_action(account_id: str, access_token: str, rule_level: str, items: L
                                 "access_token": access_token
                             }
                             response = requests.post(url, params=params, timeout=30)
-                            
+
                             # Track API call
                             if api_call_counter is not None:
                                 api_call_counter["total"] += 1
                                 api_call_counter["actions"] += 1
-                            
+
                             response.raise_for_status()
                             check_rate_limit_headers(response, "write")
                             result["success"] = True
@@ -271,12 +271,12 @@ def execute_action(account_id: str, access_token: str, rule_level: str, items: L
                             "access_token": access_token
                         }
                         response = requests.post(url, params=params, timeout=30)
-                        
+
                         # Track API call
                         if api_call_counter is not None:
                             api_call_counter["total"] += 1
                             api_call_counter["actions"] += 1
-                        
+
                         response.raise_for_status()
                         check_rate_limit_headers(response, "write", account_id=account_id)
                         result["success"] = True
@@ -309,12 +309,12 @@ def execute_action(account_id: str, access_token: str, rule_level: str, items: L
                             "access_token": access_token
                         }
                         response = requests.post(url, params=params, timeout=30)
-                        
+
                         # Track API call
                         if api_call_counter is not None:
                             api_call_counter["total"] += 1
                             api_call_counter["actions"] += 1
-                        
+
                         response.raise_for_status()
                         check_rate_limit_headers(response, "write", account_id=account_id)
                         result["success"] = True

@@ -50,7 +50,7 @@
                     severity="danger"
                     text
                     size="small"
-                    @click="$emit('delete-folder', folder.id)"
+                    @click="$emit('delete-folder', folder)"
                     v-tooltip.top="'Delete Folder'"
                 />
             </div>

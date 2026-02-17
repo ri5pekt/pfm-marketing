@@ -227,7 +227,7 @@ def fetch_facebook_data(
 
             response = requests.get(url, timeout=30)
             request_time = time.time() - page_start_time
-            
+
             # Track API call
             if api_call_counter is not None:
                 api_call_counter["total"] += 1
@@ -445,12 +445,12 @@ def fetch_insights(account_id: str, access_token: str, rule_level: str, ids: Lis
         try:
             batch_start_time = time.time()
             response = requests.get(endpoint, params=params, timeout=60)
-            
+
             # Track API call
             if api_call_counter is not None:
                 api_call_counter["total"] += 1
                 api_call_counter["fetch_insights"] += 1
-            
+
             response.raise_for_status()
             check_rate_limit_headers(response, "insights", account_id=account_id)
             data = response.json()
@@ -689,7 +689,7 @@ def build_time_range_string(time_range: Dict[str, Any]) -> str:
     unit = time_range.get("unit", "days")
     amount = time_range.get("amount", 1)
     exclude_today = time_range.get("exclude_today", True)
-    
+
     # Defensive: ensure values are not lists
     if isinstance(unit, list):
         unit = unit[0] if unit else "days"
@@ -700,7 +700,7 @@ def build_time_range_string(time_range: Dict[str, Any]) -> str:
     if isinstance(exclude_today, list):
         exclude_today = exclude_today[0] if exclude_today else True
         logger.warning(f"time_range 'exclude_today' was a list, using first element: {exclude_today}")
-    
+
     # Ensure amount is an integer
     try:
         amount = int(amount)

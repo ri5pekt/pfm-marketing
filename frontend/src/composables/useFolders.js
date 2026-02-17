@@ -109,21 +109,30 @@ export function useFolders() {
         }
     }
 
-    async function deleteFolder(folderId) {
+    async function deleteFolder(folder) {
+        const rulesCount = folder.rules?.length || 0;
+        const warningMessage = rulesCount > 0 
+            ? `Are you sure you want to delete this folder and permanently delete all ${rulesCount} rule${rulesCount === 1 ? '' : 's'} inside it?\n\nThis action cannot be undone.`
+            : "Are you sure you want to delete this folder?";
+        
         return new Promise((resolve, reject) => {
             confirm.require({
-                message: "Are you sure you want to delete this folder? Rules will be moved to root level.",
-                header: "Confirm Delete",
+                message: warningMessage,
+                header: "Delete Folder & Rules",
                 icon: "pi pi-exclamation-triangle",
                 acceptClass: "p-button-danger",
+                acceptLabel: rulesCount > 0 ? `Delete Folder & ${rulesCount} Rule${rulesCount === 1 ? '' : 's'}` : "Delete Folder",
+                rejectLabel: "Cancel",
                 accept: async () => {
                     try {
-                        await apiDeleteFolder(folderId);
-                        folders.value = folders.value.filter((f) => f.id !== folderId);
+                        await apiDeleteFolder(folder.id);
+                        folders.value = folders.value.filter((f) => f.id !== folder.id);
                         toast.add({
                             severity: "success",
                             summary: "Success",
-                            detail: "Folder deleted successfully",
+                            detail: rulesCount > 0 
+                                ? `Folder and ${rulesCount} rule${rulesCount === 1 ? '' : 's'} deleted successfully`
+                                : "Folder deleted successfully",
                             life: 3000,
                         });
                         resolve(true);

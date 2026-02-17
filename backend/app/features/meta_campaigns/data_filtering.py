@@ -206,7 +206,7 @@ def apply_scope_filters(data: List[Dict], scope_filters: Dict[str, Any], rule_le
                     try:
                         filter_start_time = time.time()
                         logger.info(f"Fetching campaigns for campaign_name_doesnt_contain filter (keywords to exclude: {keywords})...")
-                        
+
                         # Fetch campaigns
                         base_url = "https://graph.facebook.com/v21.0"
                         if not account_id.startswith("act_"):

@@ -26,7 +26,7 @@
                     {{ logDetails.details.items_meeting_conditions_count }}
                 </p>
                 <p v-if="logDetails.details.api_calls">
-                    <strong>API Calls:</strong> 
+                    <strong>API Calls:</strong>
                     {{ logDetails.details.api_calls.total || 0 }} total
                     <span class="api-calls-breakdown">
                         ({{ logDetails.details.api_calls.fetch_items || 0 }} fetch items,
@@ -52,7 +52,7 @@
                 <h4>Condition Evaluations</h4>
                 <div v-for="(evaluation, idx) in logDetails.details.evaluations" :key="idx" class="evaluation-item">
                     <h5>{{ evaluation.item_name }} (ID: {{ evaluation.item_id }})</h5>
-                    
+
                     <!-- NEW: Check if this is new grouped format -->
                     <div v-if="evaluation.condition_groups" class="grouped-evaluation">
                         <!-- Overall Result -->
@@ -62,13 +62,20 @@
                                 :value="evaluation.any_group_passed ? 'PASSED' : 'FAILED'"
                                 :severity="evaluation.any_group_passed ? 'success' : 'danger'"
                             />
-                            <span v-if="evaluation.passed_group_ids && evaluation.passed_group_ids.length > 0" class="passed-groups">
-                                (Passed: {{ evaluation.passed_group_ids.join(', ') }})
+                            <span
+                                v-if="evaluation.passed_group_ids && evaluation.passed_group_ids.length > 0"
+                                class="passed-groups"
+                            >
+                                (Passed: {{ evaluation.passed_group_ids.join(", ") }})
                             </span>
                         </div>
 
                         <!-- Each Group -->
-                        <div v-for="(group, groupIdx) in evaluation.condition_groups" :key="groupIdx" class="condition-group-log">
+                        <div
+                            v-for="(group, groupIdx) in evaluation.condition_groups"
+                            :key="groupIdx"
+                            class="condition-group-log"
+                        >
                             <!-- OR Divider -->
                             <div v-if="groupIdx > 0" class="log-or-divider">
                                 <div class="divider-line"></div>
@@ -88,7 +95,11 @@
 
                             <!-- Conditions in Group -->
                             <div class="group-conditions">
-                                <div v-for="(cond, condIdx) in group.conditions_evaluated" :key="condIdx" class="condition-result">
+                                <div
+                                    v-for="(cond, condIdx) in group.conditions_evaluated"
+                                    :key="condIdx"
+                                    class="condition-result"
+                                >
                                     <!-- AND Connector -->
                                     <div v-if="condIdx > 0" class="log-and-connector">AND</div>
 
@@ -112,7 +123,12 @@
                                     </div>
                                     <div v-if="cond.time_range_used" class="p-text-secondary condition-time-range">
                                         <strong>Time Range:</strong>
-                                        <span v-if="typeof cond.time_range_used === 'object' && cond.time_range_used !== null">
+                                        <span
+                                            v-if="
+                                                typeof cond.time_range_used === 'object' &&
+                                                cond.time_range_used !== null
+                                            "
+                                        >
                                             {{ formatTimeRange(cond.time_range_used) }}
                                         </span>
                                         <span v-else-if="cond.time_range_used === 'global'">
@@ -149,7 +165,8 @@
                                                         : cond.calculation_details.purchase_value
                                                 }}
                                                 <span class="p-text-secondary"
-                                                    >(source: {{ cond.calculation_details.purchase_value_source }})</span
+                                                    >(source:
+                                                    {{ cond.calculation_details.purchase_value_source }})</span
                                                 >
                                             </div>
                                             <div>
@@ -160,7 +177,10 @@
                                                         : cond.calculation_details.spend
                                                 }}
                                             </div>
-                                            <div><strong>Purchases:</strong> {{ cond.calculation_details.purchase_count }}</div>
+                                            <div>
+                                                <strong>Purchases:</strong>
+                                                {{ cond.calculation_details.purchase_count }}
+                                            </div>
                                             <div
                                                 v-if="
                                                     cond.calculation_details.aov !== null &&
@@ -178,7 +198,9 @@
                                                 <strong>CPP:</strong> ${{ cond.calculation_details.cpp.toFixed(2) }}
                                             </div>
                                             <div class="calculation-result">
-                                                <strong>Result:</strong> ${{ cond.calculation_details.result.toFixed(2) }}
+                                                <strong>Result:</strong> ${{
+                                                    cond.calculation_details.result.toFixed(2)
+                                                }}
                                             </div>
                                             <div v-if="cond.calculation_details.note" class="p-text-secondary">
                                                 {{ cond.calculation_details.note }}
@@ -476,24 +498,28 @@ function formatTimeRange(timeRange) {
 
 function formatActionType(actionType) {
     const actionTypeMap = {
-        'set_status': 'Set Status',
-        'adjust_daily_budget': 'Adjust Budget',
-        'append_to_name': 'Append to Name',
-        'remove_from_name': 'Remove from Name',
-        'send_notification': 'Send Notification'
+        set_status: "Set Status",
+        adjust_daily_budget: "Adjust Budget",
+        append_to_name: "Append to Name",
+        remove_from_name: "Remove from Name",
+        send_notification: "Send Notification",
     };
-    return actionTypeMap[actionType] || actionType?.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) || 'Unknown';
+    return (
+        actionTypeMap[actionType] ||
+        actionType?.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase()) ||
+        "Unknown"
+    );
 }
 
 function getActionTypeSeverity(actionType) {
     const severityMap = {
-        'set_status': 'info',
-        'adjust_daily_budget': 'warning',
-        'append_to_name': 'contrast',
-        'remove_from_name': 'contrast',
-        'send_notification': 'success'
+        set_status: "info",
+        adjust_daily_budget: "warning",
+        append_to_name: "contrast",
+        remove_from_name: "contrast",
+        send_notification: "success",
     };
-    return severityMap[actionType] || 'secondary';
+    return severityMap[actionType] || "secondary";
 }
 </script>
 

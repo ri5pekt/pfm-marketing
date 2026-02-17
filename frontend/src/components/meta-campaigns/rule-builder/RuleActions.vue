@@ -48,8 +48,8 @@
                     <!-- Send Notification action - no additional fields, just notification -->
                     <div v-if="action.type === 'send_notification'" class="field">
                         <small class="p-text-secondary"
-                            >This action will only send a Slack notification without making any
-                            changes to the item.</small
+                            >This action will only send a Slack notification without making any changes to the
+                            item.</small
                         >
                     </div>
                     <!-- Append to Name action fields -->
@@ -62,8 +62,8 @@
                             class="w-full"
                         />
                         <small class="p-text-secondary mt-1 block"
-                            >This text will be added to the end of the item's name. Smart duplicate
-                            detection prevents adding text that already exists.</small
+                            >This text will be added to the end of the item's name. Smart duplicate detection prevents
+                            adding text that already exists.</small
                         >
                     </div>
                     <!-- Remove from Name action fields -->
@@ -142,9 +142,7 @@
                         <label :for="`slack-notification-${index}`" class="slack-notification-label"
                             >Send slack notification</label
                         >
-                        <small
-                            v-if="action.type === 'send_notification'"
-                            class="p-text-secondary ml-2"
+                        <small v-if="action.type === 'send_notification'" class="p-text-secondary ml-2"
                             >(always enabled for notification actions)</small
                         >
                     </div>
@@ -397,4 +395,3 @@ function removeAction(index) {
     display: block;
 }
 </style>
-

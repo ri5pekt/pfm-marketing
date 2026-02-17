@@ -89,7 +89,7 @@ export function useRuleJsonConverter(ruleForm, formErrors, scheduleFormErrors) {
                 amount: ruleForm.value.timeRangeUnit === "today" ? 1 : ruleForm.value.timeRangeAmount || 1,
                 exclude_today: ruleForm.value.timeRangeUnit === "today" ? false : ruleForm.value.excludeToday,
             },
-            condition_groups: ruleForm.value.conditionGroups.map(group => ({
+            condition_groups: ruleForm.value.conditionGroups.map((group) => ({
                 conditions: group.conditions.map((c) => {
                     const conditionObj = {
                         field: c.field,
@@ -120,7 +120,7 @@ export function useRuleJsonConverter(ruleForm, formErrors, scheduleFormErrors) {
                         };
                     }
                     return conditionObj;
-                })
+                }),
             })),
             ...scopeObject,
         };
@@ -194,7 +194,7 @@ export function useRuleJsonConverter(ruleForm, formErrors, scheduleFormErrors) {
             // Accept both old format (conditions) and new format (condition_groups)
             const hasOldFormat = Array.isArray(json.conditions.conditions);
             const hasNewFormat = Array.isArray(json.conditions.condition_groups);
-            
+
             if (!hasOldFormat && !hasNewFormat) {
                 errors.push("Either 'conditions.conditions' or 'conditions.condition_groups' must be an array");
             }
@@ -250,8 +250,14 @@ export function useRuleJsonConverter(ruleForm, formErrors, scheduleFormErrors) {
             }
         }
         if (conditions.campaign_name_doesnt_contain) {
-            if (Array.isArray(conditions.campaign_name_doesnt_contain) && conditions.campaign_name_doesnt_contain.length > 0) {
-                scopeFilters.push({ type: "campaign_name_doesnt_contain", value: conditions.campaign_name_doesnt_contain });
+            if (
+                Array.isArray(conditions.campaign_name_doesnt_contain) &&
+                conditions.campaign_name_doesnt_contain.length > 0
+            ) {
+                scopeFilters.push({
+                    type: "campaign_name_doesnt_contain",
+                    value: conditions.campaign_name_doesnt_contain,
+                });
             } else if (
                 typeof conditions.campaign_name_doesnt_contain === "string" &&
                 conditions.campaign_name_doesnt_contain.trim().length > 0
@@ -275,7 +281,7 @@ export function useRuleJsonConverter(ruleForm, formErrors, scheduleFormErrors) {
 
         // Parse condition groups (handle both new and old formats)
         let conditionGroups = [];
-        
+
         // New format: condition_groups
         if (conditions.condition_groups) {
             conditionGroups = conditions.condition_groups.map((group) => ({
@@ -287,7 +293,12 @@ export function useRuleJsonConverter(ruleForm, formErrors, scheduleFormErrors) {
                         value = { base: value, mul: 1 };
                     }
                     // Normalize structured values missing multiplier
-                    if (typeof value === "object" && value && typeof value.base === "string" && value.mul === undefined) {
+                    if (
+                        typeof value === "object" &&
+                        value &&
+                        typeof value.base === "string" &&
+                        value.mul === undefined
+                    ) {
                         value = { ...value, mul: 1 };
                     }
                     const conditionObj = {
@@ -304,7 +315,7 @@ export function useRuleJsonConverter(ruleForm, formErrors, scheduleFormErrors) {
                         };
                     }
                     return conditionObj;
-                })
+                }),
             }));
         }
         // Old format: flat conditions array (backward compatibility)
@@ -335,17 +346,21 @@ export function useRuleJsonConverter(ruleForm, formErrors, scheduleFormErrors) {
                 return conditionObj;
             });
             // Wrap in single group for backward compatibility
-            conditionGroups = [{
-                groupId: crypto.randomUUID(),
-                conditions: conditionsArray
-            }];
+            conditionGroups = [
+                {
+                    groupId: crypto.randomUUID(),
+                    conditions: conditionsArray,
+                },
+            ];
         }
         // Default: empty group
         else {
-            conditionGroups = [{
-                groupId: crypto.randomUUID(),
-                conditions: []
-            }];
+            conditionGroups = [
+                {
+                    groupId: crypto.randomUUID(),
+                    conditions: [],
+                },
+            ];
         }
 
         // Parse actions array

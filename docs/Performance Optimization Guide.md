@@ -13,6 +13,7 @@ Understanding how scope filters affect rule execution performance can help you c
 These filters are sent to Facebook's API, so only matching items are fetched:
 
 #### 1. **IDs**
+
 - **Performance**: ⭐⭐⭐⭐⭐ Fastest
 - **API Calls**: 1 call (fetches only specified items)
 - **Use When**: Targeting specific ads, ad sets, or campaigns by ID
@@ -20,11 +21,12 @@ These filters are sent to Facebook's API, so only matching items are fetched:
 
 ```json
 {
-  "ids": ["123456789", "987654321"]
+    "ids": ["123456789", "987654321"]
 }
 ```
 
 #### 2. **Campaign IDs**
+
 - **Performance**: ⚡⚡⚡⚡⚡ Very Fast
 - **API Calls**: 1-2 calls depending on result size
 - **Use When**: Targeting ads/ad sets within specific campaigns
@@ -32,7 +34,7 @@ These filters are sent to Facebook's API, so only matching items are fetched:
 
 ```json
 {
-  "campaign_ids": ["111222333", "444555666"]
+    "campaign_ids": ["111222333", "444555666"]
 }
 ```
 
@@ -43,6 +45,7 @@ These filters are sent to Facebook's API, so only matching items are fetched:
 These filters require fetching ALL items, then filtering in memory:
 
 #### 3. **Name Contains**
+
 - **Performance**: 🐌🐌🐌 Slow (requires fetching all items)
 - **API Calls**: 10-20+ calls for large accounts (fetches everything, then filters)
 - **Use When**: You don't know item IDs and need to search by name pattern
@@ -50,11 +53,12 @@ These filters require fetching ALL items, then filtering in memory:
 
 ```json
 {
-  "name_contains": ["#AO-FC", "#PGS-FC"]
+    "name_contains": ["#AO-FC", "#PGS-FC"]
 }
 ```
 
 **Why It's Slow:**
+
 - Facebook API doesn't support name filtering
 - System must fetch ALL ads/ad sets/campaigns (could be 30,000+ items)
 - Then filters by name in memory
@@ -62,6 +66,7 @@ These filters require fetching ALL items, then filtering in memory:
 **Optimization Tip:** If you know the IDs, use the IDs filter instead!
 
 #### 4. **Campaign Name Contains**
+
 - **Performance**: 🐌🐌 Moderate (fetches all campaigns, then all items)
 - **API Calls**: 5-15+ calls depending on account size
 - **Use When**: Targeting items in campaigns matching a name pattern
@@ -70,12 +75,12 @@ These filters require fetching ALL items, then filtering in memory:
 
 ## Performance Comparison
 
-| Scope Filter | API Calls (Small Account) | API Calls (Large Account) | Speed |
-|-------------|--------------------------|---------------------------|-------|
-| **IDs** | 1 | 1 | ⚡⚡⚡⚡⚡ |
-| **Campaign IDs** | 1-2 | 1-3 | ⚡⚡⚡⚡⚡ |
-| **Campaign Name Contains** | 3-5 | 10-15 | 🐌🐌 |
-| **Name Contains** | 5-10 | 15-25 | 🐌🐌🐌 |
+| Scope Filter               | API Calls (Small Account) | API Calls (Large Account) | Speed      |
+| -------------------------- | ------------------------- | ------------------------- | ---------- |
+| **IDs**                    | 1                         | 1                         | ⚡⚡⚡⚡⚡ |
+| **Campaign IDs**           | 1-2                       | 1-3                       | ⚡⚡⚡⚡⚡ |
+| **Campaign Name Contains** | 3-5                       | 10-15                     | 🐌🐌       |
+| **Name Contains**          | 5-10                      | 15-25                     | 🐌🐌🐌     |
 
 ---
 
@@ -84,51 +89,55 @@ These filters require fetching ALL items, then filtering in memory:
 ### ✅ **Best Practices**
 
 1. **Use IDs When Possible**
-   - Fastest option
-   - Directly fetches only what you need
-   - Ideal for targeting specific items
+    - Fastest option
+    - Directly fetches only what you need
+    - Ideal for targeting specific items
 
 2. **Use Campaign IDs for Bulk Operations**
-   - Fast for targeting all items in specific campaigns
-   - Better than name-based filtering
+    - Fast for targeting all items in specific campaigns
+    - Better than name-based filtering
 
 3. **Combine Filters Wisely**
-   - ✅ **Good**: Campaign IDs + Status conditions
-   - ✅ **Good**: IDs + Time-based metrics
-   - ❌ **Slow**: Name Contains alone on large accounts
+    - ✅ **Good**: Campaign IDs + Status conditions
+    - ✅ **Good**: IDs + Time-based metrics
+    - ❌ **Slow**: Name Contains alone on large accounts
 
 4. **Status Filters Are Free**
-   - Status conditions (ACTIVE, PAUSED) are evaluated in the rule conditions
-   - If you have a status condition in your rule, it's applied at the API level
-   - No performance impact
+    - Status conditions (ACTIVE, PAUSED) are evaluated in the rule conditions
+    - If you have a status condition in your rule, it's applied at the API level
+    - No performance impact
 
 ### 🎯 **Real-World Examples**
 
 #### Example 1: Sunday Stop Loss (Good Performance)
+
 ```json
 {
-  "rule_level": "ad_set",
-  "campaign_ids": ["111222333", "444555666"],
-  "conditions": {
-    "status": "ACTIVE",
-    "spend_today": "> daily_budget × 0.9"
-  }
+    "rule_level": "ad_set",
+    "campaign_ids": ["111222333", "444555666"],
+    "conditions": {
+        "status": "ACTIVE",
+        "spend_today": "> daily_budget × 0.9"
+    }
 }
 ```
+
 - **API Calls**: 2-3 (fetches only ad sets in specified campaigns)
 - **Performance**: ⚡⚡⚡⚡⚡ Fast
 
 #### Example 2: Auto Optimizer with Name Filter (Slower)
+
 ```json
 {
-  "rule_level": "ad",
-  "name_contains": ["#AO-FC"],
-  "conditions": {
-    "cpp_last_7_days": "> 115",
-    "roas_last_7_days": "< 1"
-  }
+    "rule_level": "ad",
+    "name_contains": ["#AO-FC"],
+    "conditions": {
+        "cpp_last_7_days": "> 115",
+        "roas_last_7_days": "< 1"
+    }
 }
 ```
+
 - **API Calls**: 15-20 (must fetch all 30,000 ads to find ones with "#AO-FC")
 - **Performance**: 🐌🐌🐌 Slow
 
@@ -142,14 +151,14 @@ Check your rule execution logs for performance metrics:
 
 ```json
 {
-  "api_calls": {
-    "total": 16,
-    "fetch_items": 15,
-    "fetch_insights": 1,
-    "actions": 0
-  },
-  "items_checked": 2,
-  "items_meeting_conditions": 2
+    "api_calls": {
+        "total": 16,
+        "fetch_items": 15,
+        "fetch_insights": 1,
+        "actions": 0
+    },
+    "items_checked": 2,
+    "items_meeting_conditions": 2
 }
 ```
 
@@ -187,4 +196,3 @@ Potential improvements being considered:
 - 🐌 **Name Contains is slower but sometimes necessary**
 - 📊 **Monitor your rule execution logs**
 - 🎯 **Optimize based on your account size**
-

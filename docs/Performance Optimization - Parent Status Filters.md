@@ -7,6 +7,7 @@ This optimization pre-resolves parent status conditions (`campaign_status` and `
 ## How It Works
 
 ### Without Optimization:
+
 ```
 1. Fetch ALL 6,707 paused ads with #AO
 2. Check parent campaign status for each ad (in memory)
@@ -15,6 +16,7 @@ This optimization pre-resolves parent status conditions (`campaign_status` and `
 ```
 
 ### With Phase 2 Optimization:
+
 ```
 1. Pre-fetch campaigns with status = ACTIVE → Get 91 campaign IDs
 2. Pre-fetch adsets with status = ACTIVE (from those 91 campaigns) → Get ~500 adset IDs
@@ -31,12 +33,14 @@ This optimization pre-resolves parent status conditions (`campaign_status` and `
 ### Late Attribution Reactivator Example:
 
 **Before Phase 2:**
+
 - Items fetched: 6,707 ads
 - API calls: 5
 - Items evaluated: 6
 - Efficiency: 0.09%
 
 **After Phase 2:**
+
 - Items fetched: ~100 ads (estimated)
 - API calls: 6-7 (2 extra pre-fetch, but much smaller payload)
 - Items evaluated: 6
@@ -124,6 +128,7 @@ Look for these log messages to verify optimization is working:
 Phase 2 works seamlessly with existing optimizations:
 
 **Example: Full optimization stack**
+
 ```
 Rule: Late Attribution Reactivator
 Scope: Name contains "#AO"
@@ -151,12 +156,14 @@ Result: Fetch ~100 ads instead of 15,000 (150x improvement!)
 ## Trade-offs
 
 **Pros:**
+
 - ✅ Dramatic reduction in data fetched (67-150x)
 - ✅ Faster execution time
 - ✅ Lower API bandwidth usage
 - ✅ Works automatically for all applicable rules
 
 **Cons:**
+
 - ⚠️ 2-3 additional API calls for pre-fetching parents
 - ⚠️ Slightly more complex execution flow
 
@@ -167,12 +174,14 @@ Result: Fetch ~100 ads instead of 15,000 (150x improvement!)
 To verify optimization effectiveness, compare logs:
 
 **Before Phase 2:**
+
 ```
 data_fetch.total_items: 6707
 items_checked: 6
 ```
 
 **After Phase 2:**
+
 ```
 data_fetch.total_items: 100
 items_checked: 6

@@ -6,13 +6,7 @@
                 <p class="subtitle">Monitor all rule executions across all ad accounts</p>
             </div>
             <div class="header-actions">
-                <Button
-                    icon="pi pi-refresh"
-                    label="Refresh"
-                    :loading="loading"
-                    @click="loadLogs"
-                    outlined
-                />
+                <Button icon="pi pi-refresh" label="Refresh" :loading="loading" @click="loadLogs" outlined />
             </div>
         </div>
 
@@ -34,45 +28,42 @@
                 >
                     <template #empty>
                         <div class="empty-state">
-                            <i class="pi pi-inbox" style="font-size: 3rem; color: #94a3b8;"></i>
+                            <i class="pi pi-inbox" style="font-size: 3rem; color: #94a3b8"></i>
                             <p>No logs found</p>
                         </div>
                     </template>
 
-                    <Column field="created_at" header="Date" sortable style="width: 180px;">
+                    <Column field="created_at" header="Date" sortable style="width: 180px">
                         <template #body="{ data }">
                             <span class="log-date">{{ formatDate(data.created_at) }}</span>
                         </template>
                     </Column>
 
-                    <Column field="status" header="Status" sortable style="width: 120px;">
+                    <Column field="status" header="Status" sortable style="width: 120px">
                         <template #body="{ data }">
-                            <Tag
-                                :value="data.status.toUpperCase()"
-                                :severity="getStatusSeverity(data.status)"
-                            />
+                            <Tag :value="data.status.toUpperCase()" :severity="getStatusSeverity(data.status)" />
                         </template>
                     </Column>
 
-                    <Column field="ad_account_name" header="Ad Account" sortable style="width: 200px;">
+                    <Column field="ad_account_name" header="Ad Account" sortable style="width: 200px">
                         <template #body="{ data }">
                             <span class="account-name">{{ data.ad_account_name }}</span>
                         </template>
                     </Column>
 
-                    <Column field="rule_name" header="Rule" sortable style="width: 250px;">
+                    <Column field="rule_name" header="Rule" sortable style="width: 250px">
                         <template #body="{ data }">
                             <span class="rule-name">{{ data.rule_name }}</span>
                         </template>
                     </Column>
 
-                    <Column field="message" header="Message" style="min-width: 300px;">
+                    <Column field="message" header="Message" style="min-width: 300px">
                         <template #body="{ data }">
                             <span class="log-message">{{ data.message }}</span>
                         </template>
                     </Column>
 
-                    <Column header="Actions" style="width: 150px;">
+                    <Column header="Actions" style="width: 150px">
                         <template #body="{ data }">
                             <div class="log-actions">
                                 <Button
@@ -100,10 +91,7 @@
         </Card>
 
         <!-- Log Details Dialog - Using same component as rule-specific logs -->
-        <LogDetailsDialog
-            v-model="showDetailsDialog"
-            :log-details="selectedLog"
-        />
+        <LogDetailsDialog v-model="showDetailsDialog" :log-details="selectedLog" />
     </div>
 </template>
 
@@ -160,19 +148,19 @@ function downloadLog(log) {
         status: log.status,
         message: log.message,
         created_at: log.created_at,
-        details: log.details
+        details: log.details,
     };
 
     const blob = new Blob([JSON.stringify(logData, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    
+
     // Create filename with rule name and timestamp
     const timestamp = new Date(log.created_at).toISOString().replace(/[:.]/g, "-").slice(0, -5);
     const ruleName = log.rule_name.replace(/[^a-z0-9]/gi, "_").toLowerCase();
     link.download = `log_${ruleName}_${timestamp}.json`;
-    
+
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);

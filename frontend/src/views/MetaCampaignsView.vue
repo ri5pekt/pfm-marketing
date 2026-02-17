@@ -218,8 +218,7 @@ const {
     saveRulePositions,
 } = useFolders();
 
-// Polling interval
-let rulesPollingInterval = null;
+// No more polling - we reload on user actions instead
 
 // Handlers
 async function onAccountSelect(event) {
@@ -247,8 +246,8 @@ async function handleRenameFolder(folderId, newName) {
     }
 }
 
-async function handleDeleteFolder(folderId) {
-    await deleteFolder(folderId);
+async function handleDeleteFolder(folder) {
+    await deleteFolder(folder);
     if (selectedAccount.value) {
         await loadFolders(selectedAccount.value.id);
         await loadRules(selectedAccount.value.id);
@@ -399,27 +398,11 @@ onMounted(async () => {
         // No default account yet - this is expected
     }
 
-    // Start polling for rules updates every 5 seconds
-    rulesPollingInterval = setInterval(() => {
-        if (selectedAccount.value) {
-            // Check if any folder is currently being edited
-            const isEditingFolder = folders.value.some(folder => folder.editing === true);
-            
-            // Only reload if no folder is being edited
-            if (!isEditingFolder) {
-                loadRules(selectedAccount.value.id, true);
-                loadFolders(selectedAccount.value.id, true);
-            }
-        }
-        loadAllRules();
-    }, 5000);
+    // No polling needed - we reload after user actions
 });
 
 onUnmounted(() => {
-    if (rulesPollingInterval) {
-        clearInterval(rulesPollingInterval);
-        rulesPollingInterval = null;
-    }
+    // Cleanup if needed
 });
 
 // Watchers

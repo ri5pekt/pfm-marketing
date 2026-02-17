@@ -1,16 +1,16 @@
 <template>
     <div v-if="modelValue.ruleLevel" class="form-section">
         <h3 class="section-title">4. Conditions</h3>
-        
+
         <div v-if="modelValue.conditionGroups.length === 0" class="empty-message">
             <p>No condition groups defined. Click "Add Group" to add one.</p>
         </div>
-        
+
         <div v-else class="condition-groups-list">
             <template v-for="(group, groupIdx) in modelValue.conditionGroups" :key="group.groupId">
                 <!-- OR Divider (between groups) -->
                 <ConditionGroupDivider v-if="groupIdx > 0" />
-                
+
                 <!-- Condition Group -->
                 <ConditionGroup
                     :group="group"
@@ -30,13 +30,7 @@
         </div>
 
         <div class="add-group-section">
-            <Button
-                label="Add Group"
-                icon="pi pi-plus-circle"
-                severity="secondary"
-                outlined
-                @click="addGroup"
-            />
+            <Button label="Add Group" icon="pi pi-plus-circle" severity="secondary" outlined @click="addGroup" />
         </div>
     </div>
 </template>
@@ -141,21 +135,21 @@ function addGroup() {
             ...props.modelValue.conditionGroups,
             {
                 groupId: crypto.randomUUID(),
-                conditions: []
-            }
-        ]
+                conditions: [],
+            },
+        ],
     });
 }
 
 function removeGroup(groupIndex) {
     if (props.modelValue.conditionGroups.length <= 1) return;
-    
+
     const newGroups = [...props.modelValue.conditionGroups];
     newGroups.splice(groupIndex, 1);
-    
+
     emit("update:modelValue", {
         ...props.modelValue,
-        conditionGroups: newGroups
+        conditionGroups: newGroups,
     });
 }
 
@@ -164,22 +158,22 @@ function handleGroupConditionUpdate(groupIndex, { index, update }) {
     const condition = newGroups[groupIndex].conditions[index];
     newGroups[groupIndex].conditions[index] = {
         ...condition,
-        [update.field]: update.value
+        [update.field]: update.value,
     };
-    
+
     emit("update:modelValue", {
         ...props.modelValue,
-        conditionGroups: newGroups
+        conditionGroups: newGroups,
     });
 }
 
 function handleGroupConditionRemove(groupIndex, conditionIndex) {
     const newGroups = [...props.modelValue.conditionGroups];
     newGroups[groupIndex].conditions.splice(conditionIndex, 1);
-    
+
     emit("update:modelValue", {
         ...props.modelValue,
-        conditionGroups: newGroups
+        conditionGroups: newGroups,
     });
 }
 
@@ -188,12 +182,12 @@ function handleGroupConditionAdd(groupIndex) {
     newGroups[groupIndex].conditions.push({
         field: null,
         operator: null,
-        value: null
+        value: null,
     });
-    
+
     emit("update:modelValue", {
         ...props.modelValue,
-        conditionGroups: newGroups
+        conditionGroups: newGroups,
     });
 }
 </script>

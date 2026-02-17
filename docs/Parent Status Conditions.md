@@ -13,11 +13,13 @@ Parent status conditions allow you to check the status of parent objects when ev
 **Purpose:** Check the status of the parent campaign when evaluating ads or ad sets.
 
 **Use Cases:**
+
 - Only target ads/ad sets in ACTIVE campaigns
 - Exclude items from PAUSED or DELETED campaigns
 - Combine with other conditions for complex rules
 
 **Example - Ad Set Rule:**
+
 ```
 Conditions:
   - Campaign Status = ACTIVE
@@ -36,11 +38,13 @@ Actions:
 **Purpose:** Check the status of the parent ad set when evaluating ads.
 
 **Use Cases:**
+
 - Only target ads in ACTIVE ad sets
 - Pause ads that belong to PAUSED ad sets
 - Ensure ads match parent ad set status
 
 **Example - Ad Rule:**
+
 ```
 Conditions:
   - Adset Status = ACTIVE
@@ -73,6 +77,7 @@ To avoid excessive API calls, parent statuses are **pre-fetched** before conditi
 - **Cached**: No repeated API calls for same parent objects
 
 **Example:**
+
 - Rule evaluates 100 ads from 5 ad sets
 - Without optimization: 100+ API calls
 - With pre-fetch: 1-2 API calls to fetch 5 ad set statuses
@@ -94,6 +99,7 @@ Parent status conditions support these operators:
 - `!=` (not equals): Exclude specific status
 
 **Examples:**
+
 ```
 Campaign Status = ACTIVE     → Only items from active campaigns
 Campaign Status != PAUSED    → Exclude items from paused campaigns
@@ -105,6 +111,7 @@ Adset Status = ACTIVE        → Only ads from active ad sets
 You can combine multiple status conditions in the same rule:
 
 **Example - Triple Status Check:**
+
 ```
 Rule: High Performing Ad Reactivator
 Level: Ad
@@ -200,12 +207,14 @@ For efficiency, only minimal fields are fetched:
 ### Status Priority
 
 If both `status` and `effective_status` are available, the system uses:
+
 1. `status` (actual status set by user)
 2. Falls back to `effective_status` if `status` is null
 
 ### Caching Scope
 
 Status caches are:
+
 - **Per Rule Execution**: Fresh fetch for each rule run
 - **Not Persisted**: Cleared after rule completes
 - **In-Memory Only**: Not stored in database

@@ -1,4 +1,4 @@
-import { ref, watch } from 'vue';
+import { ref, watch } from "vue";
 
 /**
  * Composable for handling rule drag and drop functionality
@@ -38,6 +38,12 @@ export function useRuleDragDrop(props, emit) {
     }
 
     function handleFolderDragLeave(folder, event) {
+        // Guard against undefined event
+        if (!event || !event.currentTarget) {
+            folder.isDragOver = false;
+            return;
+        }
+
         // Only clear if actually leaving the folder element
         const rect = event.currentTarget.getBoundingClientRect();
         const x = event.clientX;
@@ -56,7 +62,7 @@ export function useRuleDragDrop(props, emit) {
         // Clear all drag-over states
         isDragging.value = false;
         unifiedItems.forEach((item) => {
-            if (item.type === 'folder') {
+            if (item.type === "folder") {
                 item.data.isDragOver = false;
             }
         });
@@ -68,7 +74,7 @@ export function useRuleDragDrop(props, emit) {
 
             // Ungrouped rules (no folder)
             unifiedItems.forEach((item) => {
-                if (item.type === 'ungrouped-container') {
+                if (item.type === "ungrouped-container") {
                     item.data.forEach((rule, index) => {
                         items.push({
                             id: rule.id,
@@ -81,7 +87,7 @@ export function useRuleDragDrop(props, emit) {
 
             // Rules in folders
             unifiedItems.forEach((item) => {
-                if (item.type === 'folder') {
+                if (item.type === "folder") {
                     item.data.rules.forEach((rule, index) => {
                         items.push({
                             id: rule.id,
@@ -92,21 +98,21 @@ export function useRuleDragDrop(props, emit) {
                 }
             });
 
-            emit('reorder-rules', items);
+            emit("reorder-rules", items);
         }, 100);
     }
 
     function onFolderReorder(unifiedItems) {
         // Update positions for folders only (ungrouped container doesn't have a position in DB)
         const folderItems = unifiedItems
-            .filter((item) => item.type === 'folder')
+            .filter((item) => item.type === "folder")
             .map((item, index) => ({
                 id: item.id,
                 position: index,
             }));
 
         if (folderItems.length > 0) {
-            emit('reorder-folders', folderItems);
+            emit("reorder-folders", folderItems);
         }
     }
 

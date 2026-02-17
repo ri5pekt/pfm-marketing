@@ -36,7 +36,7 @@ class RuleFolder(Base):
 
     # Relationships
     ad_account = relationship("AdAccount", back_populates="rule_folders")
-    rules = relationship("CampaignRule", back_populates="folder", order_by="CampaignRule.position")
+    rules = relationship("CampaignRule", back_populates="folder", order_by="CampaignRule.position", cascade="all, delete-orphan")
 
 
 class CampaignRule(Base):
