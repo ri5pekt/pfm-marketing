@@ -19,8 +19,8 @@
                     <Tag
                         :value="scheduleDisplay.short"
                         severity="info"
-                        :class="['schedule-tag', { 'has-tooltip': scheduleDisplay.isComplex }]"
-                        v-tooltip.top="scheduleDisplay.isComplex ? scheduleDisplay.full : null"
+                        :class="['schedule-tag', { 'has-tooltip': scheduleDisplay.isComplex || scheduleDisplay.timezone }]"
+                        v-tooltip.top="getScheduleTooltip()"
                     />
                 </div>
                 <div class="rule-meta-line">
@@ -117,6 +117,28 @@ const props = defineProps({
 defineEmits(["test-rule", "cancel-test", "view-logs", "edit-rule", "delete-rule"]);
 
 const scheduleDisplay = computed(() => getScheduleDisplay(props.rule.schedule_cron));
+
+function getScheduleTooltip() {
+    const display = scheduleDisplay.value;
+    
+    // If complex schedule, show full schedule
+    if (display.isComplex) {
+        let tooltip = display.full;
+        // Add timezone if not UTC
+        if (display.timezone && display.timezone !== "UTC") {
+            tooltip += `\nTimezone: ${display.timezone}`;
+        }
+        return tooltip;
+    }
+    
+    // If has timezone (but not complex), show just timezone
+    if (display.timezone && display.timezone !== "UTC") {
+        return `Timezone: ${display.timezone}`;
+    }
+    
+    // No tooltip needed
+    return null;
+}
 </script>
 
 <style scoped>

@@ -3,7 +3,7 @@ import logging
 import time
 from typing import Dict, List
 from app.features.meta_campaigns.rate_limit_tracker import check_rate_limit_headers
-from app.features.meta_campaigns.facebook_api_client import WRITE_DELAY
+from app.features.meta_campaigns.facebook_api_client import WRITE_DELAY, FETCH_TIMEOUT, retry_on_timeout
 
 logger = logging.getLogger(__name__)
 
@@ -144,7 +144,10 @@ def execute_action(account_id: str, access_token: str, rule_level: str, items: L
                     "status": status,
                     "access_token": access_token
                 }
-                response = requests.post(url, params=params, timeout=30)
+                start_time = time.time()
+                response = retry_on_timeout(requests.post, url, params=params, timeout=FETCH_TIMEOUT)
+                elapsed = time.time() - start_time
+                logger.info(f"[API TIMING] Set status action completed in {elapsed:.2f}s")
 
                 # Track API call
                 if api_call_counter is not None:
@@ -163,7 +166,10 @@ def execute_action(account_id: str, access_token: str, rule_level: str, items: L
                     # Fetch current adset to get daily_budget
                     url = f"{base_url}/{item_id}"
                     params = {"fields": "daily_budget", "access_token": access_token}
-                    get_response = requests.get(url, params=params, timeout=30)
+                    start_time = time.time()
+                    get_response = retry_on_timeout(requests.get, url, params=params, timeout=FETCH_TIMEOUT)
+                    elapsed = time.time() - start_time
+                    logger.debug(f"[API TIMING] Fetch budget completed in {elapsed:.2f}s")
 
                     # Track API call
                     if api_call_counter is not None:
@@ -197,7 +203,10 @@ def execute_action(account_id: str, access_token: str, rule_level: str, items: L
                                 "daily_budget": int(new_budget * 100),
                                 "access_token": access_token
                             }
-                            response = requests.post(url, params=params, timeout=30)
+                            start_time = time.time()
+                            response = retry_on_timeout(requests.post, url, params=params, timeout=FETCH_TIMEOUT)
+                            elapsed = time.time() - start_time
+                            logger.info(f"[API TIMING] Budget increase action completed in {elapsed:.2f}s")
 
                             # Track API call
                             if api_call_counter is not None:
@@ -227,7 +236,10 @@ def execute_action(account_id: str, access_token: str, rule_level: str, items: L
                                 "daily_budget": int(new_budget * 100),
                                 "access_token": access_token
                             }
-                            response = requests.post(url, params=params, timeout=30)
+                            start_time = time.time()
+                            response = retry_on_timeout(requests.post, url, params=params, timeout=FETCH_TIMEOUT)
+                            elapsed = time.time() - start_time
+                            logger.info(f"[API TIMING] Budget decrease action completed in {elapsed:.2f}s")
 
                             # Track API call
                             if api_call_counter is not None:
@@ -270,7 +282,10 @@ def execute_action(account_id: str, access_token: str, rule_level: str, items: L
                             "name": new_name,
                             "access_token": access_token
                         }
-                        response = requests.post(url, params=params, timeout=30)
+                        start_time = time.time()
+                        response = retry_on_timeout(requests.post, url, params=params, timeout=FETCH_TIMEOUT)
+                        elapsed = time.time() - start_time
+                        logger.info(f"[API TIMING] Append to name action completed in {elapsed:.2f}s")
 
                         # Track API call
                         if api_call_counter is not None:
@@ -308,7 +323,10 @@ def execute_action(account_id: str, access_token: str, rule_level: str, items: L
                             "name": new_name,
                             "access_token": access_token
                         }
-                        response = requests.post(url, params=params, timeout=30)
+                        start_time = time.time()
+                        response = retry_on_timeout(requests.post, url, params=params, timeout=FETCH_TIMEOUT)
+                        elapsed = time.time() - start_time
+                        logger.info(f"[API TIMING] Remove from name action completed in {elapsed:.2f}s")
 
                         # Track API call
                         if api_call_counter is not None:

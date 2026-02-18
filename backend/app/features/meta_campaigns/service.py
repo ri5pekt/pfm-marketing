@@ -412,7 +412,13 @@ def test_rule(db: Session, rule_id: int):
         "total": 0,
         "fetch_items": 0,
         "fetch_insights": 0,
-        "actions": 0
+        "actions": 0,
+        "timings": {
+            "fetch_items_seconds": 0,
+            "fetch_insights_seconds": 0,
+            "actions_seconds": 0,
+            "total_api_time_seconds": 0
+        }
     }
 
     log_details = {
@@ -746,6 +752,8 @@ def test_rule(db: Session, rule_id: int):
             api_call_counter=api_call_counter,
         )
         step_elapsed = time.time() - step_start_time
+        api_call_counter["timings"]["fetch_items_seconds"] = round(step_elapsed, 2)
+        api_call_counter["timings"]["total_api_time_seconds"] += round(step_elapsed, 2)
         logger.info(f"[TIMING] Step 1 completed in {step_elapsed:.2f} seconds - Fetched {len(all_data)} total {rule_level} items from Facebook API")
         log_details["data_fetch"] = {
             "total_items": len(all_data),
@@ -813,6 +821,8 @@ def test_rule(db: Session, rule_id: int):
             logger.info(f"[TIMING] Time range {group_time_range}: {insights_with_data} items have data out of {len(group_insights)} total")
 
         step_elapsed = time.time() - step_start_time
+        api_call_counter["timings"]["fetch_insights_seconds"] = round(step_elapsed, 2)
+        api_call_counter["timings"]["total_api_time_seconds"] += round(step_elapsed, 2)
         logger.info(f"[TIMING] Step 3 completed in {step_elapsed:.2f} seconds - Fetched insights for {len(condition_groups)} unique time range(s)")
         log_details["insights_summary"] = {
             "unique_time_ranges": len(condition_groups),
@@ -1100,6 +1110,9 @@ def test_rule(db: Session, rule_id: int):
                 )
                 actions_executed.extend(action_results)
         step_elapsed = time.time() - step_start_time
+        api_call_counter["timings"]["actions_seconds"] = round(step_elapsed, 2)
+        if len(actions_executed) > 0:
+            api_call_counter["timings"]["total_api_time_seconds"] += round(step_elapsed, 2)
         logger.info(f"[TIMING] Step 7 completed in {step_elapsed:.2f} seconds - Executed {len(actions_executed)} action(s)")
 
         log_details["actions_executed"] = actions_executed
@@ -1116,8 +1129,10 @@ def test_rule(db: Session, rule_id: int):
         log_details["items_checked"] = len(filtered_data)
 
         total_elapsed = time.time() - total_start_time
+        api_call_counter["timings"]["total_execution_seconds"] = round(total_elapsed, 2)
         logger.info(f"[TIMING] === Rule execution completed in {total_elapsed:.2f} seconds total ===")
         logger.info(f"[API CALLS] Total: {api_call_counter['total']}, Fetch Items: {api_call_counter['fetch_items']}, Fetch Insights: {api_call_counter['fetch_insights']}, Actions: {api_call_counter['actions']}")
+        logger.info(f"[API TIMING] Fetch Items: {api_call_counter['timings']['fetch_items_seconds']}s, Fetch Insights: {api_call_counter['timings']['fetch_insights_seconds']}s, Actions: {api_call_counter['timings']['actions_seconds']}s, Total API Time: {api_call_counter['timings']['total_api_time_seconds']}s")
         logger.info(f"[DEBUG] log_details keys: {log_details.keys()}")
         logger.info(f"[DEBUG] api_calls in log_details: {log_details.get('api_calls')}")
 

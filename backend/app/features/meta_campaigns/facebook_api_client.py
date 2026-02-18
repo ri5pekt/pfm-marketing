@@ -3,16 +3,124 @@ import logging
 import time
 import json
 from datetime import datetime, timedelta
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Callable
 from urllib.parse import quote, urlparse, parse_qs, urlencode, urlunparse
 from app.features.meta_campaigns.rate_limit_tracker import check_rate_limit_headers
 
 logger = logging.getLogger(__name__)
 
 # API call delays to prevent rate limiting
-READ_DELAY = 0.3  # Delay between read API calls (300ms)
-WRITE_DELAY = 0.7  # Delay between write API calls (700ms)
-INSIGHTS_DELAY = 1.0  # Delay between insights API calls (1s)
+# Increased to reduce Facebook timeouts (error 1504018) and rate limiting (429)
+READ_DELAY = 0.5  # Delay between read API calls (increased from 0.3s)
+WRITE_DELAY = 1.0  # Delay between write API calls (increased from 0.7s)
+INSIGHTS_DELAY = 2.0  # Delay between insights API calls (increased from 1.0s - CRITICAL for preventing timeouts)
+
+# Timeout settings
+FETCH_TIMEOUT = 90  # Timeout for fetching ads/campaigns/adsets (increased from 30s)
+INSIGHTS_TIMEOUT = 90  # Timeout for insights API calls (increased from 60s)
+
+# Retry settings
+MAX_RETRIES = 2  # Maximum number of retries for failed requests
+RETRY_DELAY = 5  # Delay between retries in seconds
+
+
+def safe_json_parse(response):
+    """
+    Safely parse JSON response, detecting and handling HTML error pages.
+    
+    Args:
+        response: requests.Response object
+        
+    Returns:
+        dict: Parsed JSON data
+        
+    Raises:
+        ValueError: If response is HTML or cannot be parsed as JSON
+    """
+    # Check Content-Type header
+    content_type = response.headers.get('Content-Type', '')
+    
+    # If response is HTML, Facebook returned an error page
+    if 'text/html' in content_type.lower():
+        # Try to extract error info from HTML
+        html_preview = response.text[:500] if len(response.text) > 500 else response.text
+        
+        logger.error(f"[FACEBOOK SERVER ERROR] Facebook returned HTML error page instead of JSON")
+        logger.error(f"Status code: {response.status_code}")
+        logger.error(f"HTML preview: {html_preview}")
+        
+        raise ValueError(
+            f"Facebook internal server error: Received HTML error page (status {response.status_code}). "
+            f"This usually indicates Facebook API downtime or degraded performance. "
+            f"Preview: {html_preview[:200]}"
+        )
+    
+    # Try to parse JSON
+    try:
+        return response.json()
+    except json.JSONDecodeError as e:
+        # Not HTML, but also not valid JSON
+        logger.error(f"[JSON PARSE ERROR] Response is not valid JSON")
+        logger.error(f"Content-Type: {content_type}")
+        logger.error(f"Response preview: {response.text[:500]}")
+        
+        raise ValueError(
+            f"Invalid JSON response from Facebook API: {str(e)}. "
+            f"Content-Type: {content_type}"
+        )
+
+
+def retry_on_timeout(func: Callable, *args, max_retries: int = MAX_RETRIES, retry_delay: int = RETRY_DELAY, **kwargs):
+    """
+    Retry a function if it times out.
+    
+    Args:
+        func: Function to call (e.g., requests.get)
+        max_retries: Maximum number of retry attempts
+        retry_delay: Delay in seconds between retries
+        *args, **kwargs: Arguments to pass to the function
+    
+    Returns:
+        Response object from successful call
+        
+    Raises:
+        Exception from the last failed attempt
+    """
+    last_exception = None
+    
+    for attempt in range(max_retries + 1):
+        try:
+            start_time = time.time()
+            response = func(*args, **kwargs)
+            elapsed = time.time() - start_time
+            
+            # Log successful call with timing
+            if attempt > 0:
+                logger.info(f"[RETRY SUCCESS] Request succeeded on attempt {attempt + 1} after {elapsed:.2f}s")
+            else:
+                logger.debug(f"[API TIMING] Request completed in {elapsed:.2f}s")
+            
+            return response
+            
+        except requests.exceptions.Timeout as e:
+            last_exception = e
+            elapsed = time.time() - start_time
+            
+            if attempt < max_retries:
+                logger.warning(f"[RETRY] Request timed out after {elapsed:.2f}s (attempt {attempt + 1}/{max_retries + 1}). Retrying in {retry_delay}s...")
+                time.sleep(retry_delay)
+            else:
+                logger.error(f"[RETRY FAILED] Request timed out after {elapsed:.2f}s. All {max_retries + 1} attempts failed.")
+                raise last_exception
+                
+        except Exception as e:
+            # For non-timeout errors, don't retry
+            elapsed = time.time() - start_time
+            logger.error(f"[API ERROR] Request failed after {elapsed:.2f}s: {str(e)}")
+            raise
+    
+    # Should not reach here, but just in case
+    raise last_exception
 
 
 def _safe_float_any(value, default=0.0) -> float:
@@ -225,8 +333,10 @@ def fetch_facebook_data(
             page_start_time = time.time()
             logger.info(f"[FETCH] Fetching {rule_level} page {page_count} for account {account_id}... (URL: {endpoint})")
 
-            response = requests.get(url, timeout=30)
+            # Use retry logic with increased timeout
+            response = retry_on_timeout(requests.get, url, timeout=FETCH_TIMEOUT)
             request_time = time.time() - page_start_time
+            logger.info(f"[API TIMING] Fetch {rule_level} page {page_count} completed in {request_time:.2f}s")
 
             # Track API call
             if api_call_counter is not None:
@@ -302,7 +412,7 @@ def fetch_facebook_data(
             # Also call the existing check function for warnings and tracking
             check_rate_limit_headers(response, "read", account_id=account_id)
 
-            data = response.json()
+            data = safe_json_parse(response)
             page_items = data.get("data", [])
             all_items.extend(page_items)
 
@@ -345,8 +455,8 @@ def fetch_facebook_data(
 
             url = next_url
 
-            # Use 0.5s delay for all rule levels
-            delay = 0.5
+            # Use 0.8s delay for all rule levels (increased from 0.5s to reduce rate limiting)
+            delay = 0.8
             logger.info(f"[FETCH] Waiting {delay:.2f}s before fetching next {rule_level} page to avoid rate limiting...")
             time.sleep(delay)
 
@@ -364,6 +474,11 @@ def fetch_facebook_data(
         else:
             logger.warning(f"[FETCH] No {rule_level} items found for account {account_id}")
         return all_items
+    except ValueError as e:
+        # HTML error page or invalid JSON from safe_json_parse
+        logger.error(f"[FACEBOOK ERROR] {str(e)}")
+        logger.error(f"This is likely a temporary Facebook server issue. Retry may help.")
+        raise
     except requests.exceptions.RequestException as e:
         logger.error(f"Error fetching Facebook data: {str(e)}")
         if hasattr(e, 'response') and e.response is not None and hasattr(e.response, 'text'):
@@ -444,7 +559,9 @@ def fetch_insights(account_id: str, access_token: str, rule_level: str, ids: Lis
 
         try:
             batch_start_time = time.time()
-            response = requests.get(endpoint, params=params, timeout=60)
+            
+            # Use retry logic with increased timeout
+            response = retry_on_timeout(requests.get, endpoint, params=params, timeout=INSIGHTS_TIMEOUT)
 
             # Track API call
             if api_call_counter is not None:
@@ -453,9 +570,9 @@ def fetch_insights(account_id: str, access_token: str, rule_level: str, ids: Lis
 
             response.raise_for_status()
             check_rate_limit_headers(response, "insights", account_id=account_id)
-            data = response.json()
+            data = safe_json_parse(response)
             batch_elapsed = time.time() - batch_start_time
-            logger.info(f"[TIMING] Insights batch {batch_num}/{total_batches} completed in {batch_elapsed:.2f} seconds - {len(batch_ids)} IDs, got {len(data.get('data', []))} insights")
+            logger.info(f"[TIMING] Insights batch {batch_num}/{total_batches} completed in {batch_elapsed:.2f}s - {len(batch_ids)} IDs, got {len(data.get('data', []))} insights")
             logger.info(f"Insights API response for batch: {len(batch_ids)} IDs, got {len(data.get('data', []))} insights")
             if data.get("data") and len(data["data"]) > 0:
                 # Log first insight to see structure
@@ -498,10 +615,47 @@ def fetch_insights(account_id: str, access_token: str, rule_level: str, ids: Lis
             if batch_num < total_batches:
                 time.sleep(INSIGHTS_DELAY)
                 logger.debug(f"Waiting {INSIGHTS_DELAY}s before fetching next insights batch to avoid rate limiting")
+        except ValueError as e:
+            # HTML error page or invalid JSON from safe_json_parse
+            logger.error(f"[FACEBOOK SERVER ERROR] Insights batch {batch_num}/{total_batches}: {str(e)}")
+            logger.error(f"This is likely a temporary Facebook server issue. Marking batch items as having no insights.")
+            # Mark all batch items as having no insights
+            for obj_id in batch_ids:
+                if obj_id not in insights_data:
+                    insights_data[obj_id] = {}
         except requests.exceptions.RequestException as e:
-            logger.error(f"Error fetching insights batch: {str(e)}")
-            if hasattr(e, 'response') and e.response is not None and hasattr(e.response, 'text'):
-                logger.error(f"Response: {e.response.text}")
+            error_type = "Unknown error"
+            error_details = str(e)
+            
+            # Check if it's a Facebook-side timeout (400 with subcode 1504018)
+            if hasattr(e, 'response') and e.response is not None:
+                try:
+                    error_json = e.response.json()
+                    error_info = error_json.get("error", {})
+                    error_subcode = error_info.get("error_subcode")
+                    error_message = error_info.get("message", "")
+                    
+                    if error_subcode == 1504018:
+                        error_type = "Facebook Server Timeout"
+                        error_details = f"Facebook's API timed out processing the request. {error_info.get('error_user_msg', '')}"
+                        logger.warning(f"[FACEBOOK TIMEOUT] Insights batch {batch_num}/{total_batches}: Facebook's servers couldn't process request in time. Batch size: {len(batch_ids)} IDs. Consider reducing batch size or retry later.")
+                    elif e.response.status_code == 400:
+                        error_type = "Bad Request (400)"
+                        error_details = f"Code: {error_info.get('code')}, Subcode: {error_subcode}, Message: {error_message}"
+                        logger.error(f"[BAD REQUEST] Insights batch {batch_num}/{total_batches}: {error_details}")
+                    elif e.response.status_code == 429:
+                        error_type = "Rate Limit (429)"
+                        error_details = error_message or "Too Many Requests"
+                        logger.error(f"[RATE LIMIT] Insights batch {batch_num}/{total_batches}: Facebook rate limit exceeded. Consider increasing delays between API calls.")
+                    else:
+                        logger.error(f"Response: {e.response.text}")
+                except (ValueError, KeyError, AttributeError):
+                    # If we can't parse the error response, log the raw text
+                    if hasattr(e.response, 'text'):
+                        logger.error(f"Response: {e.response.text}")
+            
+            logger.error(f"[{error_type}] Error fetching insights batch {batch_num}/{total_batches}: {error_details}")
+            
             # Mark all batch items as having no insights
             for obj_id in batch_ids:
                 if obj_id not in insights_data:
@@ -575,12 +729,14 @@ def fetch_daily_insights(account_id: str, access_token: str, rule_level: str, id
 
         try:
             batch_start_time = time.time()
-            response = requests.get(endpoint, params=params, timeout=60)
+            
+            # Use retry logic with increased timeout
+            response = retry_on_timeout(requests.get, endpoint, params=params, timeout=INSIGHTS_TIMEOUT)
             response.raise_for_status()
             check_rate_limit_headers(response, "insights", account_id=account_id)
-            data = response.json()
+            data = safe_json_parse(response)
             batch_elapsed = time.time() - batch_start_time
-            logger.info(f"[TIMING] Daily insights batch {batch_num}/{total_batches} completed in {batch_elapsed:.2f} seconds")
+            logger.info(f"[TIMING] Daily insights batch {batch_num}/{total_batches} completed in {batch_elapsed:.2f}s")
 
             if data.get("data"):
                 for insight in data["data"]:
@@ -596,6 +752,12 @@ def fetch_daily_insights(account_id: str, access_token: str, rule_level: str, id
             # Rate limiting delay
             time.sleep(INSIGHTS_DELAY)
 
+        except ValueError as e:
+            # HTML error page or invalid JSON from safe_json_parse
+            logger.error(f"[FACEBOOK SERVER ERROR] Daily insights batch {batch_num}: {str(e)}")
+            logger.error(f"This is likely a temporary Facebook server issue. Continuing with other batches.")
+            # Continue with other batches even if one fails
+            continue
         except requests.exceptions.RequestException as e:
             logger.error(f"Error fetching daily insights batch {batch_num}: {str(e)}")
             # Continue with other batches even if one fails
@@ -648,10 +810,16 @@ def fetch_ads_for_item(
     all_ads = []
     try:
         while True:
-            response = requests.get(endpoint, params=params, timeout=60)
+            start_time = time.time()
+            
+            # Use retry logic with increased timeout
+            response = retry_on_timeout(requests.get, endpoint, params=params, timeout=INSIGHTS_TIMEOUT)
+            elapsed = time.time() - start_time
+            logger.debug(f"[API TIMING] Fetch ads for {item_type} {item_id} completed in {elapsed:.2f}s")
+            
             response.raise_for_status()
             check_rate_limit_headers(response, "read", account_id=account_id)
-            data = response.json()
+            data = safe_json_parse(response)
 
             if data.get("data"):
                 all_ads.extend(data["data"])
@@ -675,6 +843,11 @@ def fetch_ads_for_item(
         logger.info(f"Fetched {len(all_ads)} ads for {item_type} {item_id}")
         return all_ads
 
+    except ValueError as e:
+        # HTML error page or invalid JSON from safe_json_parse
+        logger.error(f"[FACEBOOK SERVER ERROR] Error fetching ads for {item_type} {item_id}: {str(e)}")
+        logger.error(f"This is likely a temporary Facebook server issue.")
+        return []
     except requests.exceptions.RequestException as e:
         logger.error(f"Error fetching ads for {item_type} {item_id}: {e}")
         return []

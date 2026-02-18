@@ -377,7 +377,8 @@ export function formatSchedule(scheduleCron) {
             }
 
             const scheduleText = scheduleParts.join(", ");
-            return timezone !== "UTC" ? `${scheduleText} (${timezone})` : scheduleText;
+            // Don't append timezone to label - it will be in tooltip
+            return scheduleText;
         }
 
         // Handle other JSON-wrapped schedule types
@@ -397,15 +398,13 @@ export function formatSchedule(scheduleCron) {
         // Every X minutes
         if (minute.startsWith("*/")) {
             const freq = minute.substring(2);
-            const scheduleText = `Every ${freq} minute${freq !== "1" ? "s" : ""}`;
-            return timezone !== "UTC" ? `${scheduleText} (${timezone})` : scheduleText;
+            return `Every ${freq} minute${freq !== "1" ? "s" : ""}`;
         }
 
         // Every X hours
         if (hour.startsWith("*/") && minute !== "*" && !minute.startsWith("*/")) {
             const freq = hour.substring(2);
-            const scheduleText = `Every ${freq} hour${freq !== "1" ? "s" : ""} at :${minute.padStart(2, "0")}`;
-            return timezone !== "UTC" ? `${scheduleText} (${timezone})` : scheduleText;
+            return `Every ${freq} hour${freq !== "1" ? "s" : ""} at :${minute.padStart(2, "0")}`;
         }
 
         // Daily at specific time
@@ -413,32 +412,27 @@ export function formatSchedule(scheduleCron) {
             const time = `${hour.padStart(2, "0")}:${minute.padStart(2, "0")}`;
             if (dayOfMonth.startsWith("*/")) {
                 const freq = dayOfMonth.substring(2);
-                const scheduleText = `Every ${freq} day${freq !== "1" ? "s" : ""} at ${time}`;
-                return timezone !== "UTC" ? `${scheduleText} (${timezone})` : scheduleText;
+                return `Every ${freq} day${freq !== "1" ? "s" : ""} at ${time}`;
             }
-            const scheduleText = `Daily at ${time}`;
-            return timezone !== "UTC" ? `${scheduleText} (${timezone})` : scheduleText;
+            return `Daily at ${time}`;
         }
 
         // Weekly on specific day
         if (dayOfWeek !== "*" && month === "*" && dayOfMonth === "*" && hour !== "*" && minute !== "*") {
             const dayName = weekDays.find((d) => d.value === parseInt(dayOfWeek))?.label || `Day ${dayOfWeek}`;
             const time = `${hour.padStart(2, "0")}:${minute.padStart(2, "0")}`;
-            const scheduleText = `Every ${dayName} at ${time}`;
-            return timezone !== "UTC" ? `${scheduleText} (${timezone})` : scheduleText;
+            return `Every ${dayName} at ${time}`;
         }
 
         // Monthly on specific day
         if (dayOfMonth !== "*" && month === "*" && dayOfWeek === "*" && hour !== "*" && minute !== "*") {
             const time = `${hour.padStart(2, "0")}:${minute.padStart(2, "0")}`;
-            let scheduleText;
             if (month.startsWith("*/")) {
                 const freq = month.substring(2);
-                scheduleText = `Every ${freq} month${freq !== "1" ? "s" : ""} on day ${dayOfMonth} at ${time}`;
+                return `Every ${freq} month${freq !== "1" ? "s" : ""} on day ${dayOfMonth} at ${time}`;
             } else {
-                scheduleText = `Monthly on day ${dayOfMonth} at ${time}`;
+                return `Monthly on day ${dayOfMonth} at ${time}`;
             }
-            return timezone !== "UTC" ? `${scheduleText} (${timezone})` : scheduleText;
         }
     }
 
@@ -448,13 +442,14 @@ export function formatSchedule(scheduleCron) {
 
 /**
  * Get formatted schedule with short and full versions
- * Returns { short, full, isComplex }
+ * Returns { short, full, isComplex, timezone }
  */
 export function getScheduleDisplay(scheduleCron) {
     const full = formatSchedule(scheduleCron);
     
     let short = full;
     let isComplex = false;
+    let timezone = null;
     
     // Check if it's a custom daily schedule - always shorten these
     try {
@@ -462,7 +457,7 @@ export function getScheduleDisplay(scheduleCron) {
         if (parsed.type === "custom_daily" && parsed.schedule) {
             isComplex = true;
             const dayCount = Object.keys(parsed.schedule).length;
-            const timezone = parsed.timezone || "UTC";
+            timezone = parsed.timezone || "UTC";
             
             if (dayCount === 1) {
                 // Single day - show the day name
@@ -475,14 +470,15 @@ export function getScheduleDisplay(scheduleCron) {
                 short = `${dayCount} Days at Custom Times`;
             }
             
-            if (timezone !== "UTC") {
-                short += ` (${timezone})`;
-            }
+            // Don't append timezone to short - it will be in tooltip
+        } else if (parsed.timezone) {
+            // For other schedule types, extract timezone
+            timezone = parsed.timezone;
         }
     } catch (e) {
         // Not a custom daily schedule, keep as-is
     }
     
-    return { short, full, isComplex };
+    return { short, full, isComplex, timezone };
 }
 

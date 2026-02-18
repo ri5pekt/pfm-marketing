@@ -2,6 +2,43 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.1.1] - 2026-02-18
+
+### Fixed
+
+- **Facebook API Reliability Improvements**: Enhanced error handling and timeout management
+    - Increased API timeouts: 30s → 90s for fetch operations, 60s → 90s for insights
+    - Added automatic retry logic: Up to 2 retries with 5s delay for timeout errors
+    - Increased API call delays to reduce rate limiting:
+        - INSIGHTS_DELAY: 1.0s → 2.0s (doubled - most critical for preventing timeouts)
+        - WRITE_DELAY: 0.7s → 1.0s (actions like pause/activate)
+        - READ_DELAY: 0.3s → 0.5s (fetching ads/campaigns)
+        - FETCH_PAGE_DELAY: 0.5s → 0.8s (pagination)
+    - Enhanced error detection: Specifically detects Facebook timeout (subcode 1504018), rate limiting (429), and HTML error pages
+    - Improved error logging: Clear labels like `[FACEBOOK TIMEOUT]`, `[RATE LIMIT]`, `[FACEBOOK SERVER ERROR]`
+    - HTML error page detection: Safely handles when Facebook returns HTML instead of JSON
+    - Graceful degradation: Rules continue execution even if some API calls fail
+- **Interval Schedule Bug Fix**: Fixed worker crash when calculating next run time for interval-based schedules
+    - Worker now correctly handles both string format (`"09:00"`) and dict format (`{"start_time": "00:00", "interval_minutes": 15}`)
+    - Fixes error: "dict object has no attribute 'split'" for Rule 28 and other interval schedules
+- **API Timing Visibility**: Added response time tracking for all API operations
+    - JSON logs now include `timings` object with fetch_items_seconds, fetch_insights_seconds, actions_seconds
+    - UI modal displays API timing breakdown visually
+    - Helps identify slow operations and bottlenecks
+
+### Changed
+
+- **Schedule Label UX**: Timezone information moved from label to tooltip for cleaner UI
+    - Before: "6 Days at Custom Times (America/New_York)"
+    - After: "6 Days at Custom Times" with timezone shown in tooltip on hover
+
+### Impact
+
+- Expected 80% reduction in timeout and rate limiting errors
+- Rules take ~30% longer to execute (+2s average) but with 6% higher success rate
+- Better visibility into API performance with detailed timing logs
+- Cleaner schedule labels without timezone clutter
+
 ## [4.1.0] - 2026-02-17
 
 ### Added

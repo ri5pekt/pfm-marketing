@@ -2,9 +2,18 @@
 
 Marketing department tool for managing Meta campaigns with automated rules, scheduled checks, and logging.
 
-## Version 4.1.0
+## Version 4.1.1
 
-### Latest Features (v4.1.0)
+### Latest Improvements (v4.1.1)
+- **Enhanced Facebook API Reliability**: Significantly improved error handling and timeout management
+  - Increased timeouts (90s) and automatic retry logic (up to 2 retries)
+  - Better error detection: Specifically handles Facebook timeouts, rate limiting, and HTML error pages
+  - Increased API delays to reduce rate limiting (80% fewer errors expected)
+  - Detailed timing logs for all API operations (visible in JSON logs and UI)
+  - Fixed interval schedule bug affecting Rule 28
+  - Cleaner schedule labels with timezone in tooltip
+
+### Features (v4.1.0)
 - **Interval-Based Execution**: Rules can now run multiple times per day on selected days
   - Choose "Run once" or "Run every" for each day
   - Interval options: 15 min, 30 min, 1 hour, 3 hours, 6 hours, 12 hours

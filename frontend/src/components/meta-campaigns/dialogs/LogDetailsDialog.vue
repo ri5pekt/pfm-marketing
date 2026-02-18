@@ -34,6 +34,31 @@
                         {{ logDetails.details.api_calls.actions || 0 }} actions)
                     </span>
                 </p>
+                <div v-if="logDetails.details.api_calls && logDetails.details.api_calls.timings" class="api-timings">
+                    <strong>API Response Times:</strong>
+                    <div class="timing-grid">
+                        <div class="timing-item">
+                            <span class="timing-label">Fetch Items:</span>
+                            <span class="timing-value">{{ formatTiming(logDetails.details.api_calls.timings.fetch_items_seconds) }}</span>
+                        </div>
+                        <div class="timing-item">
+                            <span class="timing-label">Fetch Insights:</span>
+                            <span class="timing-value">{{ formatTiming(logDetails.details.api_calls.timings.fetch_insights_seconds) }}</span>
+                        </div>
+                        <div class="timing-item" v-if="logDetails.details.api_calls.timings.actions_seconds > 0">
+                            <span class="timing-label">Actions:</span>
+                            <span class="timing-value">{{ formatTiming(logDetails.details.api_calls.timings.actions_seconds) }}</span>
+                        </div>
+                        <div class="timing-item timing-total">
+                            <span class="timing-label">Total API Time:</span>
+                            <span class="timing-value">{{ formatTiming(logDetails.details.api_calls.timings.total_api_time_seconds) }}</span>
+                        </div>
+                        <div class="timing-item timing-total">
+                            <span class="timing-label">Total Execution:</span>
+                            <span class="timing-value">{{ formatTiming(logDetails.details.api_calls.timings.total_execution_seconds) }}</span>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <div
@@ -521,6 +546,13 @@ function getActionTypeSeverity(actionType) {
     };
     return severityMap[actionType] || "secondary";
 }
+
+function formatTiming(seconds) {
+    if (seconds === null || seconds === undefined || seconds === 0) {
+        return "0.00s";
+    }
+    return `${seconds.toFixed(2)}s`;
+}
 </script>
 
 <style scoped>
@@ -838,5 +870,52 @@ function getActionTypeSeverity(actionType) {
     color: #6b7280;
     font-size: 0.875rem;
     margin-left: 0.5rem;
+}
+
+.api-timings {
+    margin-top: 0.75rem;
+    padding: 0.75rem;
+    background: #f9fafb;
+    border-radius: 6px;
+    border: 1px solid #e5e7eb;
+}
+
+.api-timings strong {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: #1f2937;
+    font-size: 0.9rem;
+}
+
+.timing-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.timing-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem;
+    background: white;
+    border-radius: 4px;
+    font-size: 0.875rem;
+}
+
+.timing-item.timing-total {
+    border-top: 2px solid #e5e7eb;
+    font-weight: 600;
+    background: #fefce8;
+}
+
+.timing-label {
+    color: #6b7280;
+}
+
+.timing-value {
+    color: #1f2937;
+    font-family: monospace;
+    font-weight: 600;
 }
 </style>

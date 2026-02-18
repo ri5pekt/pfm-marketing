@@ -77,10 +77,23 @@ def check_campaign_rule(rule_id: int):
                         now_tz = datetime.now(tz)
                         next_runs = []
 
-                        for day_str, time_str in schedule.items():
+                        for day_str, time_config in schedule.items():
                             try:
                                 day = int(day_str)
-                                hour, minute = map(int, time_str.split(":"))
+                                
+                                # Determine if this is a simple time string or interval config
+                                if isinstance(time_config, str):
+                                    # Format 1: Simple string "HH:MM" - run once
+                                    hour, minute = map(int, time_config.split(":"))
+                                elif isinstance(time_config, dict):
+                                    # Format 2: Interval config with start_time and interval_minutes
+                                    # For next run calculation, we use the start_time
+                                    # The scheduler creates separate jobs for each interval time
+                                    start_time = time_config.get("start_time", "00:00")
+                                    hour, minute = map(int, start_time.split(":"))
+                                else:
+                                    logger.error(f"Invalid time_config format for rule {rule_id}, day {day}: {time_config}")
+                                    continue
 
                                 # Create a cron expression for this specific day and time
                                 # Cron format: minute hour * * dayOfWeek
@@ -107,7 +120,7 @@ def check_campaign_rule(rule_id: int):
 
                                 next_runs.append(next_run_utc)
                             except (ValueError, KeyError) as e:
-                                logger.warning(f"Error parsing day/time for next run calculation: day={day_str}, time={time_str}, error={str(e)}")
+                                logger.warning(f"Error parsing day/time for next run calculation: day={day_str}, time_config={time_config}, error={str(e)}")
                                 continue
 
                         if next_runs:
