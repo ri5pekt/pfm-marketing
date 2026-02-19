@@ -506,7 +506,7 @@ def fetch_insights(account_id: str, access_token: str, rule_level: str, ids: Lis
     # Fields to fetch
     # NOTE:
     # - Meta does not provide a direct "AOV" metric; we derive it when needed from purchase value / purchase count.
-    # - For "Media Margin Volume" we need both purchase count and purchase value.
+    # - For "Contribution Margin" we need both purchase count and purchase value.
     # - Use action_values (purchase) to derive purchase value. (Meta may show "purchase conversion value" in UI,
     #   but it is not a valid Insights field to request directly in v21.0.)
     fields = "campaign_id,adset_id,ad_id,spend,impressions,clicks,cpc,cpm,ctr,actions,action_values,cost_per_action_type"

@@ -2,9 +2,13 @@
 
 Marketing department tool for managing Meta campaigns with automated rules, scheduled checks, and logging.
 
-## Version 4.1.1
+## Version 4.1.2
 
-### Latest Improvements (v4.1.1)
+### Latest Changes (v4.1.2)
+- **Renamed "Media Margin Volume" to "Contribution Margin"**: Clearer metric name
+  - Formula: (Average Order Value - Cost Per Purchase) × Purchases
+
+### Recent Improvements (v4.1.1)
 - **Enhanced Facebook API Reliability**: Significantly improved error handling and timeout management
   - Increased timeouts (90s) and automatic retry logic (up to 2 retries)
   - Better error detection: Specifically handles Facebook timeouts, rate limiting, and HTML error pages

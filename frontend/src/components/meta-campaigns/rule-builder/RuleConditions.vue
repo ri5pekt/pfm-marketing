@@ -89,7 +89,7 @@ const adSetConditionFields = [
     { label: "AOV (Average Order Value)", value: "aov" },
     { label: "Daily budget", value: "daily_budget" },
     { label: "Contribution Total", value: "contribution_total" },
-    { label: "Media Margin Volume", value: "media_margin_volume" },
+    { label: "Contribution Margin", value: "media_margin_volume" },
     { label: "Status", value: "status" },
     { label: "Campaign Status", value: "campaign_status" },
     { label: "Amount of Active Ads", value: "amount_of_active_ads" },

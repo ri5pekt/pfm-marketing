@@ -91,7 +91,7 @@ def calculate_metric_from_insights(insights: Dict, field: str) -> float:
                     conversions += safe_float(action.get("value"), 0)
         return conversions
     elif field == "purchase_count":
-        # Purchase count only (needed for Media Margin Volume / AOV calculations)
+        # Purchase count only (needed for Contribution Margin / AOV calculations)
         actions = insights.get("actions", [])
         preferred = [
             "omni_purchase",
@@ -154,15 +154,15 @@ def calculate_metric_from_insights(insights: Dict, field: str) -> float:
         return 0
     elif field == "media_margin_volume":
         """
-        Media Margin Volume (today):
-          (Avg Order Value - Cost Per Purchase) × Purchases
+        Contribution Margin:
+          (Average Order Value - Cost Per Purchase) × Purchases
 
         Using Meta-native definitions:
           AOV = purchase_value / purchase_count
           CPP = spend / purchase_count   (or cost_per_action_type purchase)
 
         This simplifies to:
-          media_margin_volume = purchase_value - spend
+          contribution_margin = purchase_value - spend
         (when value & spend refer to the same time range and attribution settings)
         """
         purchase_value = calculate_metric_from_insights(insights, "purchase_value")
@@ -406,7 +406,7 @@ def evaluate_condition(item: Dict, insights: Dict, condition: Dict, campaign_sta
     else:
         actual_value = calculate_metric_from_insights(insights, field)
 
-        # Attach detailed calculation for debugging Media Margin Volume / Contribution Total
+        # Attach detailed calculation for debugging Contribution Margin / Contribution Total
         if field == "media_margin_volume" or field == "contribution_total":
             spend = _safe_float_any(insights.get("spend"), 0.0)
 

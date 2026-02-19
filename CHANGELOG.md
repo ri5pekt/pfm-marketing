@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.1.2] - 2026-02-18
+
+### Changed
+
+- **Renamed "Media Margin Volume" to "Contribution Margin"**: Clearer metric name that better represents the calculation
+    - Formula remains the same: (Average Order Value - Cost Per Purchase) × Purchases
+    - Equivalent to: purchase_value - spend
+    - Updated throughout UI, backend comments, and documentation
+    - Field name `media_margin_volume` retained for API compatibility
+    - "Contribution Total" remains available as an alternative metric
+
 ## [4.1.1] - 2026-02-18
 
 ### Fixed
@@ -80,7 +91,7 @@ All notable changes to this project will be documented in this file.
 - Per-condition time ranges: Each condition can now specify its own time range
 - CPP Winning Days field: Count days where CPP was below threshold (excluding days with no purchases)
 - Amount of Active Ads field: Count active ads in campaigns/adsets (or parent adset for ad-level rules)
-- Contribution Total field: New metric name for (AOV - CPP) × Purchases calculation (available alongside Media Margin Volume)
+- Contribution Total field: New metric name for (AOV - CPP) × Purchases calculation (available alongside Contribution Margin)
 - Adset Status condition: Check parent ad set status in ad-level rules (e.g., only target ads from active ad sets)
 - Name modification actions: Append or remove text from campaign/adset/ad names (all levels)
     - `append_to_name`: Add text to the end of item names (e.g., " | #SSL")

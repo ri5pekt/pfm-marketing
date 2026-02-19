@@ -176,7 +176,7 @@
                                                 : "N/A"
                                         }}
                                     </div>
-                                    <!-- Media Margin Volume Details (debug) -->
+                                    <!-- Contribution Margin Details (debug) -->
                                     <div v-if="cond.calculation_details" class="calculation-details">
                                         <div class="calculation-formula">
                                             <strong>Formula:</strong> {{ cond.calculation_details.formula }}
@@ -286,7 +286,7 @@
                                         : "N/A"
                                 }}
                             </div>
-                            <!-- Media Margin Volume Details (debug) -->
+                            <!-- Contribution Margin Details (debug) -->
                             <div v-if="cond.calculation_details" class="calculation-details">
                                 <div class="calculation-formula">
                                     <strong>Formula:</strong> {{ cond.calculation_details.formula }}
