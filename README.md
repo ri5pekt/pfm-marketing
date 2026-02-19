@@ -2,9 +2,13 @@
 
 Marketing department tool for managing Meta campaigns with automated rules, scheduled checks, and logging.
 
-## Version 4.1.2
+## Version 4.1.3
 
-### Latest Changes (v4.1.2)
+### Latest Changes (v4.1.3)
+- **Optimized Rule Execution Logs page**: Server-side pagination for faster loading
+  - Loads only 25/50/100 logs per page instead of 500 at once
+
+### Recent Changes (v4.1.2)
 - **Renamed "Media Margin Volume" to "Contribution Margin"**: Clearer metric name
   - Formula: (Average Order Value - Cost Per Purchase) × Purchases
 

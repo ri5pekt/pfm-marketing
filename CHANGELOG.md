@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.1.3] - 2026-02-19
+
+### Performance
+
+- **Optimized Rule Execution Logs page loading**: Implemented server-side pagination
+    - Page now loads only 25/50/100 logs at a time (user's choice) instead of 500
+    - Initial page load is significantly faster
+    - Backend returns total count for proper pagination
+    - Each page change fetches only that page from the server
+    - Users can now access all logs, not limited to first 500
+
 ## [4.1.2] - 2026-02-18
 
 ### Changed

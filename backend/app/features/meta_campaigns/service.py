@@ -282,9 +282,10 @@ def delete_rule(db: Session, rule_id: int):
 
 def get_all_logs(db: Session, limit: int = 100, offset: int = 0):
     """Get all rule execution logs across all ad accounts with rule and account info"""
-    from sqlalchemy import desc
+    from sqlalchemy import desc, func
 
-    logs = db.query(
+    # Build base query
+    base_query = db.query(
         models.RuleLog,
         models.CampaignRule.name.label('rule_name'),
         models.CampaignRule.ad_account_id,
@@ -295,14 +296,20 @@ def get_all_logs(db: Session, limit: int = 100, offset: int = 0):
     ).join(
         models.AdAccount,
         models.CampaignRule.ad_account_id == models.AdAccount.id
-    ).order_by(
+    )
+
+    # Get total count
+    total_count = base_query.count()
+
+    # Get paginated results
+    logs = base_query.order_by(
         desc(models.RuleLog.created_at)
     ).limit(limit).offset(offset).all()
 
     # Format the results
-    result = []
+    items = []
     for log, rule_name, ad_account_id, ad_account_name in logs:
-        result.append({
+        items.append({
             "id": log.id,
             "rule_id": log.rule_id,
             "rule_name": rule_name,
@@ -314,7 +321,12 @@ def get_all_logs(db: Session, limit: int = 100, offset: int = 0):
             "created_at": log.created_at
         })
 
-    return result
+    return {
+        "items": items,
+        "total": total_count,
+        "limit": limit,
+        "offset": offset
+    }
 
 
 def get_rule_logs(db: Session, rule_id: int, limit: int = 100):

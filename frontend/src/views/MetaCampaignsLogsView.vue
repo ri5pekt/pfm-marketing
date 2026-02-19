@@ -6,7 +6,7 @@
                 <p class="subtitle">Monitor all rule executions across all ad accounts</p>
             </div>
             <div class="header-actions">
-                <Button icon="pi pi-refresh" label="Refresh" :loading="loading" @click="loadLogs" outlined />
+                <Button icon="pi pi-refresh" label="Refresh" :loading="loading" @click="refreshLogs" outlined />
             </div>
         </div>
 
@@ -18,7 +18,9 @@
                     :rows="rowsPerPage"
                     :paginator="true"
                     :rowsPerPageOptions="[25, 50, 100]"
-                    :totalRecords="logs.length"
+                    :totalRecords="totalRecords"
+                    :lazy="true"
+                    @page="onPage"
                     class="logs-table"
                     paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown"
                     stripedRows
@@ -110,6 +112,8 @@ const toast = useToast();
 const logs = ref([]);
 const loading = ref(false);
 const rowsPerPage = ref(25);
+const totalRecords = ref(0);
+const currentPage = ref(0);
 const showDetailsDialog = ref(false);
 const selectedLog = ref(null);
 
@@ -120,7 +124,10 @@ onMounted(() => {
 async function loadLogs() {
     loading.value = true;
     try {
-        logs.value = await getAllLogs({ limit: 500 });
+        const offset = currentPage.value * rowsPerPage.value;
+        const response = await getAllLogs({ limit: rowsPerPage.value, offset });
+        logs.value = response.items;
+        totalRecords.value = response.total;
     } catch (error) {
         toast.add({
             severity: "error",
@@ -131,6 +138,17 @@ async function loadLogs() {
     } finally {
         loading.value = false;
     }
+}
+
+function onPage(event) {
+    currentPage.value = event.page;
+    rowsPerPage.value = event.rows;
+    loadLogs();
+}
+
+function refreshLogs() {
+    currentPage.value = 0;
+    loadLogs();
 }
 
 function viewDetails(log) {
