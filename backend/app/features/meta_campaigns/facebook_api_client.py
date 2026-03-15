@@ -426,17 +426,24 @@ def fetch_facebook_data(
                 logger.info(f"[FETCH] No more pages - reached end of data")
                 break
 
-            # Ensure filtering parameter is preserved in next_url
-            # Facebook's next_url might not include our filtering parameter
+            # Ensure filtering and fields parameters are preserved in next_url.
+            # Facebook's cursor next_url normally includes both, but it's not guaranteed.
             try:
                 parsed = urlparse(next_url)
                 query_params = parse_qs(parsed.query)
+                changed = False
 
-                # Check if filtering is already in the URL
                 if 'filtering' not in query_params:
-                    # Add our filtering parameter to preserve it across pagination
                     query_params['filtering'] = [filtering_encoded]
-                    # Reconstruct the URL with filtering
+                    changed = True
+                    logger.debug(f"[FETCH] Re-added filtering parameter to next_url for page {page_count + 1}")
+
+                if 'fields' not in query_params:
+                    query_params['fields'] = [fields]
+                    changed = True
+                    logger.warning(f"[FETCH] fields missing from next_url on page {page_count + 1} — re-added: {fields}")
+
+                if changed:
                     new_query = urlencode(query_params, doseq=True)
                     next_url = urlunparse((
                         parsed.scheme,
@@ -446,10 +453,8 @@ def fetch_facebook_data(
                         new_query,
                         parsed.fragment
                     ))
-                    logger.debug(f"[FETCH] Added filtering parameter to next_url for page {page_count + 1}")
             except Exception as e:
                 logger.warning(f"[FETCH] Could not parse/modify next_url: {e}. Using next_url as-is.")
-                # If parsing fails, try to append filtering manually
                 separator = '&' if '?' in next_url else '?'
                 next_url = f"{next_url}{separator}filtering={filtering_encoded}"
 

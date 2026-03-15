@@ -207,11 +207,40 @@ def evaluate_condition(item: Dict, insights: Dict, condition: Dict, campaign_sta
 
     # Support structured expected values, e.g. { "base": "__daily_budget__", "mul": 1.2, "add": 0 }
     # This lets the UI express comparisons like DailyBudget * 1.2 without adding many special tokens.
+
+    def _safe_budget_cents(raw) -> float:
+        """Convert a budget field value (cents string/int/None) to dollars, returning 0.0 on any failure."""
+        if raw is None or raw == "" or raw == "0" or raw == 0:
+            return 0.0
+        try:
+            return float(raw) / 100
+        except (ValueError, TypeError):
+            return 0.0
+
+    def _resolve_daily_budget() -> float:
+        """Resolve __daily_budget__: use daily_budget, fall back to lifetime_budget, warn if both are 0."""
+        daily = _safe_budget_cents(item.get("daily_budget"))
+        if daily > 0:
+            return daily
+        lifetime = _safe_budget_cents(item.get("lifetime_budget"))
+        if lifetime > 0:
+            logger.info(
+                f"[BUDGET] Item {item.get('id')} has no daily_budget — "
+                f"falling back to lifetime_budget (${lifetime:.2f})"
+            )
+            return lifetime
+        logger.warning(
+            f"[BUDGET] Item {item.get('id')} ({item.get('name')}) has daily_budget=0 and "
+            f"lifetime_budget=0. This adset may be under CBO (campaign-level budget). "
+            f"__daily_budget__ resolves to $0.00."
+        )
+        return 0.0
+
     def _resolve_special_value_token(token: str) -> float:
         if token == "__daily_budget__":
-            return float(item.get("daily_budget", 0)) / 100
+            return _resolve_daily_budget()
         if token == "__lifetime_budget__":
-            return float(item.get("lifetime_budget", 0)) / 100
+            return _safe_budget_cents(item.get("lifetime_budget"))
         if token == "__current_spend__":
             return calculate_metric_from_insights(insights, "spend")
         logger.warning(f"Unknown special value: {token}")
@@ -246,12 +275,10 @@ def evaluate_condition(item: Dict, insights: Dict, condition: Dict, campaign_sta
     # Handle special values (shortcodes like __daily_budget__)
     if isinstance(expected_value, str) and expected_value.startswith("__") and expected_value.endswith("__"):
         if expected_value == "__daily_budget__":
-            # Get daily budget from item (in cents, convert to dollars)
-            expected_value = float(item.get("daily_budget", 0)) / 100
+            expected_value = _resolve_daily_budget()
             logger.debug(f"Special value __daily_budget__ resolved to: ${expected_value:.2f}")
         elif expected_value == "__lifetime_budget__":
-            # Get lifetime budget from item (in cents, convert to dollars)
-            expected_value = float(item.get("lifetime_budget", 0)) / 100
+            expected_value = _safe_budget_cents(item.get("lifetime_budget"))
             logger.debug(f"Special value __lifetime_budget__ resolved to: ${expected_value:.2f}")
         elif expected_value == "__current_spend__":
             # Get current spend from insights
