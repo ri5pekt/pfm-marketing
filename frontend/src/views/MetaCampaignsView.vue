@@ -70,6 +70,7 @@
             @cancel-test="cancelTestRule"
             @view-logs="viewLogs"
             @delete-rule="confirmDelete"
+            @toggle-rule="handleToggleRule"
             @create-folder="handleCreateFolder"
             @rename-folder="handleRenameFolder"
             @delete-folder="handleDeleteFolder"
@@ -199,6 +200,7 @@ const {
     loadRules,
     getRulesCountForAccount,
     confirmDelete,
+    toggleRule,
     testRule,
     cancelTestRule,
     viewLogs,
@@ -221,6 +223,13 @@ const {
 // No more polling - we reload on user actions instead
 
 // Handlers
+async function handleToggleRule(rule) {
+    const success = await toggleRule(rule);
+    if (success && selectedAccount.value) {
+        await loadRules(selectedAccount.value.id, true);
+    }
+}
+
 async function onAccountSelect(event) {
     selectAccount(event.data);
     // Reset campaigns when account changes
@@ -389,10 +398,21 @@ onMounted(async () => {
     }
 
     try {
-        const defaultAccount = await loadDefaultAccount();
-        if (defaultAccount) {
-            await loadRules(defaultAccount.id);
-            await loadFolders(defaultAccount.id);
+        const requestedId = route.query.accountId ? Number(route.query.accountId) : null;
+        const accountToSelect = requestedId
+            ? adAccounts.value.find((a) => a.id === requestedId) || null
+            : null;
+
+        if (accountToSelect) {
+            selectAccount(accountToSelect);
+            await loadRules(accountToSelect.id);
+            await loadFolders(accountToSelect.id);
+        } else {
+            const defaultAccount = await loadDefaultAccount();
+            if (defaultAccount) {
+                await loadRules(defaultAccount.id);
+                await loadFolders(defaultAccount.id);
+            }
         }
     } catch (error) {
         // No default account yet - this is expected

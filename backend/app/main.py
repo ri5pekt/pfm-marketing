@@ -57,10 +57,7 @@ if os.getenv("ENVIRONMENT") != "production":
     for origin in default_origins:
         if origin not in origins:
             origins.append(origin)
-    # In development, allow all origins to handle dynamic IPs (e.g., Docker network IPs)
-    # This makes development easier when frontend runs on different network interfaces
-    origins = ["*"]
-    logger.info(f"Development mode: Allowing all origins for easier local development")
+    logger.info(f"Development mode: CORS origins: {origins}")
 
 app.add_middleware(
     CORSMiddleware,

@@ -12,10 +12,16 @@
             <!-- Column 2: Status Panel -->
             <div class="rule-meta">
                 <div class="rule-meta-line">
-                    <Tag
-                        :value="rule.enabled ? 'Enabled' : 'Disabled'"
-                        :severity="rule.enabled ? 'success' : 'secondary'"
-                    />
+                    <div class="rule-toggle-row" @click.stop>
+                        <ToggleSwitch
+                            :modelValue="rule.enabled"
+                            @update:modelValue="$emit('toggle-rule', rule)"
+                            v-tooltip.top="rule.enabled ? 'Click to disable' : 'Click to enable'"
+                        />
+                        <span class="rule-toggle-label" :class="rule.enabled ? 'enabled' : 'disabled'">
+                            {{ rule.enabled ? 'Enabled' : 'Disabled' }}
+                        </span>
+                    </div>
                     <Tag
                         :value="scheduleDisplay.short"
                         severity="info"
@@ -92,6 +98,7 @@
 import Tag from "primevue/tag";
 import Button from "primevue/button";
 import ProgressSpinner from "primevue/progressspinner";
+import ToggleSwitch from "primevue/toggleswitch";
 import { formatSchedule, formatDateWithTimezone, getScheduleDisplay } from "@/utils/cronHelpers";
 import { computed } from "vue";
 
@@ -114,7 +121,7 @@ const props = defineProps({
     },
 });
 
-defineEmits(["test-rule", "cancel-test", "view-logs", "edit-rule", "delete-rule"]);
+defineEmits(["test-rule", "cancel-test", "view-logs", "edit-rule", "delete-rule", "toggle-rule"]);
 
 const scheduleDisplay = computed(() => getScheduleDisplay(props.rule.schedule_cron));
 
@@ -227,6 +234,26 @@ function getScheduleTooltip() {
     align-items: center;
     gap: 0.375rem;
     flex-wrap: wrap;
+}
+
+.rule-toggle-row {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    cursor: pointer;
+}
+
+.rule-toggle-label {
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.rule-toggle-label.enabled {
+    color: var(--green-600);
+}
+
+.rule-toggle-label.disabled {
+    color: var(--text-color-secondary);
 }
 
 .schedule-tag {

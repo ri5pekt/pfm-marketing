@@ -78,11 +78,33 @@ export function useRuleOperations() {
         });
     }
 
+    async function toggleRule(rule) {
+        try {
+            await updateRule(rule.id, { enabled: !rule.enabled });
+            toast.add({
+                severity: "success",
+                summary: !rule.enabled ? "Rule Enabled" : "Rule Disabled",
+                detail: `"${rule.name}" has been ${!rule.enabled ? "enabled" : "disabled"}`,
+                life: 3000,
+            });
+            return true;
+        } catch (error) {
+            toast.add({
+                severity: "error",
+                summary: "Error",
+                detail: error.message || "Failed to update rule",
+                life: 5000,
+            });
+            return false;
+        }
+    }
+
     return {
         saving,
         saveRule,
         deleteRuleById,
         confirmDelete,
+        toggleRule,
     };
 }
 

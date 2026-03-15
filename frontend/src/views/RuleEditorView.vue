@@ -280,7 +280,10 @@ async function handleApplyJson() {
 }
 
 function goBack() {
-    router.push({ name: "meta-campaigns" });
+    router.push({
+        name: "meta-campaigns",
+        query: selectedAccountId.value ? { accountId: selectedAccountId.value } : {},
+    });
 }
 
 function validateForm() {
@@ -515,19 +518,18 @@ async function handleSave() {
         const ruleData = ruleFormToJSON();
         ruleData.ad_account_id = selectedAccountId.value;
 
+        const accountQuery = selectedAccountId.value ? { accountId: selectedAccountId.value } : {};
         if (isEditMode.value) {
             await updateRule(ruleId.value, ruleData);
-            // Navigate back with success message
             router.push({
                 name: "meta-campaigns",
-                query: { ruleUpdated: "true", ruleName: ruleForm.value.name },
+                query: { ...accountQuery, ruleUpdated: "true", ruleName: ruleForm.value.name },
             });
         } else {
             await createRule(ruleData);
-            // Navigate back with success message
             router.push({
                 name: "meta-campaigns",
-                query: { ruleCreated: "true", ruleName: ruleForm.value.name },
+                query: { ...accountQuery, ruleCreated: "true", ruleName: ruleForm.value.name },
             });
         }
     } catch (error) {

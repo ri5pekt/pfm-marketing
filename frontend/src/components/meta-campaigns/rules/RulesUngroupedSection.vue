@@ -25,6 +25,7 @@
                 @view-logs="$emit('view-logs', $event)"
                 @edit-rule="$emit('edit-rule', $event)"
                 @delete-rule="$emit('delete-rule', $event)"
+                @toggle-rule="$emit('toggle-rule', $event)"
             />
         </VueDraggable>
     </div>
@@ -50,7 +51,7 @@ const props = defineProps({
     },
 });
 
-const emit = defineEmits(['update:rules', 'drag-start', 'drag-end', 'test-rule', 'cancel-test', 'view-logs', 'edit-rule', 'delete-rule']);
+const emit = defineEmits(['update:rules', 'drag-start', 'drag-end', 'test-rule', 'cancel-test', 'view-logs', 'edit-rule', 'delete-rule', 'toggle-rule']);
 
 const localRules = computed({
     get: () => props.rules,

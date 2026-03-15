@@ -48,6 +48,7 @@ export function useRules() {
         saveRule: ruleOperations.saveRule,
         deleteRuleById: ruleOperations.deleteRuleById,
         confirmDelete: ruleOperations.confirmDelete,
+        toggleRule: ruleOperations.toggleRule,
         // Methods from ruleLogs
         viewLogs,
         confirmDeleteLog,

@@ -84,6 +84,7 @@
                 @view-logs="$emit('view-logs', $event)"
                 @edit-rule="$emit('edit-rule', $event)"
                 @delete-rule="$emit('delete-rule', $event)"
+                @toggle-rule="$emit('toggle-rule', $event)"
             />
         </VueDraggable>
     </div>
@@ -130,6 +131,7 @@ const emit = defineEmits([
     "view-logs",
     "edit-rule",
     "delete-rule",
+    "toggle-rule",
 ]);
 
 const folderNameInput = ref(null);

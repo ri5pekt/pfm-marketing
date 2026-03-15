@@ -23,6 +23,10 @@ export function useRuleActions(props, emit) {
         emit("delete-rule", rule);
     }
 
+    function handleToggleRule(rule) {
+        emit("toggle-rule", rule);
+    }
+
     function navigateToCreateRule() {
         router.push({
             name: "rule-create",
@@ -43,6 +47,7 @@ export function useRuleActions(props, emit) {
         handleCancelTest,
         handleViewLogs,
         handleDeleteRule,
+        handleToggleRule,
         navigateToCreateRule,
         navigateToEditRule,
     };

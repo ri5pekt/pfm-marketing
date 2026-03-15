@@ -41,6 +41,7 @@
                         @view-logs="ruleActions.handleViewLogs($event)"
                         @edit-rule="ruleActions.navigateToEditRule($event)"
                         @delete-rule="ruleActions.handleDeleteRule($event)"
+                        @toggle-rule="ruleActions.handleToggleRule($event)"
                     />
 
                     <!-- Folder -->
@@ -67,6 +68,7 @@
                         @view-logs="ruleActions.handleViewLogs($event)"
                         @edit-rule="ruleActions.navigateToEditRule($event)"
                         @delete-rule="ruleActions.handleDeleteRule($event)"
+                        @toggle-rule="ruleActions.handleToggleRule($event)"
                     />
                 </template>
             </VueDraggable>
@@ -137,6 +139,7 @@ const emit = defineEmits([
     "cancel-test",
     "view-logs",
     "delete-rule",
+    "toggle-rule",
     "create-folder",
     "rename-folder",
     "delete-folder",
