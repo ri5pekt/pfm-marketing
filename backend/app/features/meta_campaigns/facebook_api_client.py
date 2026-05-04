@@ -210,7 +210,7 @@ def fetch_facebook_data(
         filtering = '[{"field":"effective_status","operator":"NOT_IN","value":["ARCHIVED","DELETED"]}]'
     else:  # campaign
         endpoint = f"{base_url}/{account_id}/campaigns"
-        fields = "id,name,status,effective_status"
+        fields = "id,name,status,effective_status,daily_budget,lifetime_budget"
         # Filter out archived and deleted campaigns, but keep paused
         filtering = '[{"field":"effective_status","operator":"NOT_IN","value":["ARCHIVED","DELETED"]}]'
 

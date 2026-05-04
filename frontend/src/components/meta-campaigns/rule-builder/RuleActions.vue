@@ -208,6 +208,7 @@ const availableActionTypes = computed(() => {
         ];
     } else if (props.modelValue.ruleLevel === "campaign") {
         return [
+            { label: "Adjust Daily Budget by Percentage", value: "adjust_daily_budget" },
             { label: "Set Status", value: "set_status" },
             { label: "Append to Name", value: "append_to_name" },
             { label: "Remove from Name", value: "remove_from_name" },

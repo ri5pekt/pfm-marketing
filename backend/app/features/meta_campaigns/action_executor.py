@@ -162,8 +162,8 @@ def execute_action(account_id: str, access_token: str, rule_level: str, items: L
 
             elif action_type == "adjust_daily_budget":
                 # Get current budget first
-                if rule_level == "ad_set":
-                    # Fetch current adset to get daily_budget
+                if rule_level in ("ad_set", "campaign"):
+                    # Fetch current item to get daily_budget
                     url = f"{base_url}/{item_id}"
                     params = {"fields": "daily_budget", "access_token": access_token}
                     start_time = time.time()
@@ -178,86 +178,92 @@ def execute_action(account_id: str, access_token: str, rule_level: str, items: L
 
                     get_response.raise_for_status()
                     check_rate_limit_headers(get_response, "read", account_id=account_id)
-                    adset_data = get_response.json()
-                    current_budget = float(adset_data.get("daily_budget", 0)) / 100  # Convert cents to dollars
+                    item_data = get_response.json()
+                    current_budget = float(item_data.get("daily_budget", 0)) / 100  # Convert cents to dollars
 
-                    # Calculate new budget
-                    direction = action.get("direction", "increase")
-                    percent = float(action.get("percent", 0))
-                    min_cap = action.get("min_cap")
-                    max_cap = action.get("max_cap")
+                    if current_budget == 0:
+                        result["success"] = False
+                        result["message"] = f"No daily budget found for {rule_level} {item_id}. Campaign may be using lifetime budget or CBO is not enabled."
+                        result["error"] = "No daily budget available"
+                        logger.warning(f"No daily_budget for {rule_level} {item_id} — may be lifetime budget or not CBO")
+                    else:
+                        # Calculate new budget
+                        direction = action.get("direction", "increase")
+                        percent = float(action.get("percent", 0))
+                        min_cap = action.get("min_cap")
+                        max_cap = action.get("max_cap")
 
-                    if direction == "increase":
-                        new_budget = current_budget * (1 + percent / 100)
-                        # Check if increase would exceed max cap - if so, skip the action
-                        if max_cap is not None and new_budget > float(max_cap):
-                            result["success"] = False
-                            result["message"] = f"Budget increase would exceed max cap (${max_cap:.2f}). Current: ${current_budget:.2f}, Would be: ${new_budget:.2f}. Action skipped."
-                            result["old_budget"] = current_budget
-                            result["new_budget"] = current_budget
-                            logger.info(f"Skipping budget increase for adset {item_id}: would exceed max cap ${max_cap:.2f} (current: ${current_budget:.2f}, would be: ${new_budget:.2f})")
-                        else:
-                            # Update budget (in cents)
-                            url = f"{base_url}/{item_id}"
-                            params = {
-                                "daily_budget": int(new_budget * 100),
-                                "access_token": access_token
-                            }
-                            start_time = time.time()
-                            response = retry_on_timeout(requests.post, url, params=params, timeout=FETCH_TIMEOUT)
-                            elapsed = time.time() - start_time
-                            logger.info(f"[API TIMING] Budget increase action completed in {elapsed:.2f}s")
+                        if direction == "increase":
+                            new_budget = current_budget * (1 + percent / 100)
+                            # Check if increase would exceed max cap - if so, skip the action
+                            if max_cap is not None and new_budget > float(max_cap):
+                                result["success"] = False
+                                result["message"] = f"Budget increase would exceed max cap (${max_cap:.2f}). Current: ${current_budget:.2f}, Would be: ${new_budget:.2f}. Action skipped."
+                                result["old_budget"] = current_budget
+                                result["new_budget"] = current_budget
+                                logger.info(f"Skipping budget increase for {rule_level} {item_id}: would exceed max cap ${max_cap:.2f} (current: ${current_budget:.2f}, would be: ${new_budget:.2f})")
+                            else:
+                                # Update budget (in cents)
+                                url = f"{base_url}/{item_id}"
+                                params = {
+                                    "daily_budget": int(new_budget * 100),
+                                    "access_token": access_token
+                                }
+                                start_time = time.time()
+                                response = retry_on_timeout(requests.post, url, params=params, timeout=FETCH_TIMEOUT)
+                                elapsed = time.time() - start_time
+                                logger.info(f"[API TIMING] Budget increase action completed in {elapsed:.2f}s")
 
-                            # Track API call
-                            if api_call_counter is not None:
-                                api_call_counter["total"] += 1
-                                api_call_counter["actions"] += 1
+                                # Track API call
+                                if api_call_counter is not None:
+                                    api_call_counter["total"] += 1
+                                    api_call_counter["actions"] += 1
 
-                            response.raise_for_status()
-                            check_rate_limit_headers(response, "write")
-                            result["success"] = True
-                            result["message"] = f"Budget adjusted from ${current_budget:.2f} to ${new_budget:.2f}"
-                            result["old_budget"] = current_budget
-                            result["new_budget"] = new_budget
-                            logger.info(f"Successfully adjusted budget for adset {item_id}: ${current_budget:.2f} -> ${new_budget:.2f}")
-                    else:  # decrease
-                        new_budget = current_budget * (1 - percent / 100)
-                        # Check if decrease would go below min cap - if so, skip the action
-                        if min_cap is not None and new_budget < float(min_cap):
-                            result["success"] = False
-                            result["message"] = f"Budget decrease would go below min cap (${min_cap:.2f}). Current: ${current_budget:.2f}, Would be: ${new_budget:.2f}. Action skipped."
-                            result["old_budget"] = current_budget
-                            result["new_budget"] = current_budget
-                            logger.info(f"Skipping budget decrease for adset {item_id}: would go below min cap ${min_cap:.2f} (current: ${current_budget:.2f}, would be: ${new_budget:.2f})")
-                        else:
-                            # Update budget (in cents)
-                            url = f"{base_url}/{item_id}"
-                            params = {
-                                "daily_budget": int(new_budget * 100),
-                                "access_token": access_token
-                            }
-                            start_time = time.time()
-                            response = retry_on_timeout(requests.post, url, params=params, timeout=FETCH_TIMEOUT)
-                            elapsed = time.time() - start_time
-                            logger.info(f"[API TIMING] Budget decrease action completed in {elapsed:.2f}s")
+                                response.raise_for_status()
+                                check_rate_limit_headers(response, "write")
+                                result["success"] = True
+                                result["message"] = f"Budget adjusted from ${current_budget:.2f} to ${new_budget:.2f}"
+                                result["old_budget"] = current_budget
+                                result["new_budget"] = new_budget
+                                logger.info(f"Successfully adjusted budget for {rule_level} {item_id}: ${current_budget:.2f} -> ${new_budget:.2f}")
+                        else:  # decrease
+                            new_budget = current_budget * (1 - percent / 100)
+                            # Check if decrease would go below min cap - if so, skip the action
+                            if min_cap is not None and new_budget < float(min_cap):
+                                result["success"] = False
+                                result["message"] = f"Budget decrease would go below min cap (${min_cap:.2f}). Current: ${current_budget:.2f}, Would be: ${new_budget:.2f}. Action skipped."
+                                result["old_budget"] = current_budget
+                                result["new_budget"] = current_budget
+                                logger.info(f"Skipping budget decrease for {rule_level} {item_id}: would go below min cap ${min_cap:.2f} (current: ${current_budget:.2f}, would be: ${new_budget:.2f})")
+                            else:
+                                # Update budget (in cents)
+                                url = f"{base_url}/{item_id}"
+                                params = {
+                                    "daily_budget": int(new_budget * 100),
+                                    "access_token": access_token
+                                }
+                                start_time = time.time()
+                                response = retry_on_timeout(requests.post, url, params=params, timeout=FETCH_TIMEOUT)
+                                elapsed = time.time() - start_time
+                                logger.info(f"[API TIMING] Budget decrease action completed in {elapsed:.2f}s")
 
-                            # Track API call
-                            if api_call_counter is not None:
-                                api_call_counter["total"] += 1
-                                api_call_counter["actions"] += 1
+                                # Track API call
+                                if api_call_counter is not None:
+                                    api_call_counter["total"] += 1
+                                    api_call_counter["actions"] += 1
 
-                            response.raise_for_status()
-                            check_rate_limit_headers(response, "write")
-                            result["success"] = True
-                            result["message"] = f"Budget adjusted from ${current_budget:.2f} to ${new_budget:.2f}"
-                            result["old_budget"] = current_budget
-                            result["new_budget"] = new_budget
-                            logger.info(f"Successfully adjusted budget for adset {item_id}: ${current_budget:.2f} -> ${new_budget:.2f}")
+                                response.raise_for_status()
+                                check_rate_limit_headers(response, "write")
+                                result["success"] = True
+                                result["message"] = f"Budget adjusted from ${current_budget:.2f} to ${new_budget:.2f}"
+                                result["old_budget"] = current_budget
+                                result["new_budget"] = new_budget
+                                logger.info(f"Successfully adjusted budget for {rule_level} {item_id}: ${current_budget:.2f} -> ${new_budget:.2f}")
                 else:
                     result["success"] = False
-                    result["message"] = "Budget adjustment only available for ad sets"
+                    result["message"] = "Budget adjustment only available for campaigns and ad sets"
                     result["error"] = "Invalid rule level for budget adjustment"
-                    logger.warning(f"Budget adjustment attempted on {rule_level} {item_id}, but only ad sets support budget adjustment")
+                    logger.warning(f"Budget adjustment attempted on {rule_level} {item_id}, but only campaigns and ad sets support budget adjustment")
 
             elif action_type == "append_to_name":
                 # Append text to the end of the item's name
