@@ -374,7 +374,25 @@ def unschedule_rule(rule_id: int):
 
 
 def reschedule_all_rules():
-    """Load all enabled rules from database and schedule them"""
+    """Load all enabled rules from database and schedule them.
+
+    Clears the entire rq-scheduler job registry first so that duplicate jobs
+    are never created when this is called after a Redis restart or scheduler
+    process restart.
+    """
+    # Wipe any surviving scheduled jobs before re-seeding to prevent duplicates
+    try:
+        existing_jobs = scheduler.get_jobs()
+        for job in existing_jobs:
+            try:
+                scheduler.cancel(job.id)
+            except Exception:
+                pass
+        if existing_jobs:
+            logger.info(f"Cleared {len(existing_jobs)} existing scheduled jobs before reseed")
+    except Exception as e:
+        logger.warning(f"Could not clear existing scheduled jobs (Redis may be empty): {e}")
+
     db = SessionLocal()
     try:
         rules = db.query(models.CampaignRule).filter(

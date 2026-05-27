@@ -16,7 +16,9 @@ services:
 
   redis:
     image: redis:7
-    command: redis-server --slave-read-only no
+    command: redis-server --slave-read-only no --appendonly yes --appendfsync everysec
+    volumes:
+      - redis_data:/data
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -90,4 +92,5 @@ services:
 
 volumes:
   db_data:
+  redis_data:
 
