@@ -62,12 +62,20 @@ def enqueue_due_rules():
             return
 
         queue = get_queue()
+        enqueued = 0
         for rule in due_rules:
-            # Use a job_id tied to the scheduled time so we never double-enqueue
-            # the same scheduled slot even if the poll runs twice before the worker
-            # updates next_run_at.
             scheduled_ts = int(rule.next_run_at.timestamp())
             job_id = f"rule_{rule.id}_at_{scheduled_ts}"
+
+            # Use Redis SETNX as a distributed lock for this scheduled slot.
+            # TTL of 120s covers execution time + next poll cycle.
+            # If the key already exists, this slot was already enqueued — skip it.
+            lock_key = f"rule_lock:{job_id}"
+            acquired = redis_conn.set(lock_key, "1", nx=True, ex=120)
+            if not acquired:
+                logger.debug(f"Rule {rule.id} slot {scheduled_ts} already locked — skipping")
+                continue
+
             try:
                 queue.enqueue(
                     worker.check_campaign_rule,
@@ -76,11 +84,14 @@ def enqueue_due_rules():
                     result_ttl=0,
                 )
                 logger.info(f"Enqueued rule {rule.id} ({rule.name}) — scheduled {rule.next_run_at}")
+                enqueued += 1
             except Exception as e:
-                # Job with this ID already exists — already enqueued for this slot
-                logger.debug(f"Rule {rule.id} already enqueued for slot {scheduled_ts}: {e}")
+                logger.error(f"Failed to enqueue rule {rule.id}: {e}")
+                # Release the lock so it can be retried on next poll
+                redis_conn.delete(lock_key)
 
-        logger.info(f"Processed {len(due_rules)} due rules")
+        if enqueued:
+            logger.info(f"Enqueued {enqueued} due rules")
 
     except Exception as e:
         logger.error(f"Error in enqueue_due_rules: {e}", exc_info=True)
