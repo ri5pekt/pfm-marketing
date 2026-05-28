@@ -6,7 +6,7 @@
                     <i class="pi pi-megaphone"></i>
                 </div>
                 <div class="app-title">
-                    <h2>PFM Marketing</h2>
+                    <h2>{{ appSettingsStore.appTitle }}</h2>
                     <span class="version">v{{ APP_VERSION }}</span>
                 </div>
                 <div v-if="pageHeader.showBackButton" class="header-separator"></div>
@@ -41,7 +41,7 @@
             <aside class="app-sidebar">
                 <nav class="sidebar-nav">
                     <router-link
-                        v-for="item in menuItems"
+                        v-for="item in flatMenuItems"
                         :key="item.path"
                         :to="item.path"
                         class="nav-item"
@@ -50,6 +50,31 @@
                         <i :class="item.icon"></i>
                         <span>{{ item.label }}</span>
                     </router-link>
+
+                    <!-- Settings group -->
+                    <div class="nav-group">
+                        <button
+                            class="nav-item nav-group-toggle"
+                            :class="{ active: isSettingsActive }"
+                            @click="settingsOpen = !settingsOpen"
+                        >
+                            <i class="pi pi-cog"></i>
+                            <span>Settings</span>
+                            <i class="pi toggle-icon" :class="settingsOpen ? 'pi-chevron-down' : 'pi-chevron-right'"></i>
+                        </button>
+                        <div v-if="settingsOpen" class="nav-children">
+                            <router-link
+                                v-for="child in settingsItems"
+                                :key="child.path"
+                                :to="child.path"
+                                class="nav-item nav-child"
+                                :class="{ active: $route.path === child.path }"
+                            >
+                                <i :class="child.icon"></i>
+                                <span>{{ child.label }}</span>
+                            </router-link>
+                        </div>
+                    </div>
                 </nav>
             </aside>
             <main class="app-main">
@@ -61,20 +86,21 @@
 
 <script setup>
 import { ref, onMounted, computed, watch, reactive, provide } from "vue";
-import { useRouter } from "vue-router";
+import { useRouter, useRoute } from "vue-router";
 import { useToast } from "primevue/usetoast";
 import Button from "primevue/button";
 import { useAuthStore } from "@/store/authStore";
+import { useAppSettingsStore } from "@/store/appSettingsStore";
 import { APP_VERSION } from "@/config/version";
 
 const router = useRouter();
+const route = useRoute();
 const toast = useToast();
 const authStore = useAuthStore();
+const appSettingsStore = useAppSettingsStore();
 
-// Create a local computed for email
 const userEmail = computed(() => authStore.user?.email || "");
 
-// Page header state for child routes to customize
 const pageHeader = reactive({
     title: "",
     subtitle: "",
@@ -82,33 +108,41 @@ const pageHeader = reactive({
     onBack: () => {},
 });
 
-// Provide to child components
 provide("pageHeader", pageHeader);
 
 onMounted(async () => {
-    // Ensure user is loaded when component mounts
     if (authStore.token && !authStore.user && !authStore.loadingUser) {
         await authStore.fetchMe();
     }
 });
 
-const menuItems = ref([
-    {
-        path: "/",
-        label: "Dashboard",
-        icon: "pi pi-home",
-    },
-    {
-        path: "/meta-campaigns",
-        label: "Meta Campaigns",
-        icon: "pi pi-facebook",
-    },
-    {
-        path: "/meta-campaigns/logs",
-        label: "Rule Execution Logs",
-        icon: "pi pi-list",
-    },
+const flatMenuItems = ref([
+    { path: "/", label: "Dashboard", icon: "pi pi-home" },
+    { path: "/meta-campaigns", label: "Meta Campaigns", icon: "pi pi-facebook" },
+    { path: "/meta-campaigns/logs", label: "Rule Execution Logs", icon: "pi pi-list" },
 ]);
+
+const settingsItems = ref([
+    { path: "/settings/users", label: "Users", icon: "pi pi-users" },
+    { path: "/settings", label: "Main Settings", icon: "pi pi-sliders-h" },
+]);
+
+const settingsOpen = ref(false);
+
+const isSettingsActive = computed(() =>
+    route.path.startsWith("/settings")
+);
+
+// Auto-expand settings group when on a settings page
+watch(
+    () => route.path,
+    (path) => {
+        if (path.startsWith("/settings")) {
+            settingsOpen.value = true;
+        }
+    },
+    { immediate: true }
+);
 
 async function handleLogout() {
     authStore.logout();
@@ -118,7 +152,6 @@ async function handleLogout() {
         detail: "You have been logged out",
         life: 3000,
     });
-    // Force immediate redirect
     await router.push({ name: "login" });
 }
 </script>
@@ -152,7 +185,7 @@ async function handleLogout() {
 .logo {
     width: 40px;
     height: 40px;
-    background: linear-gradient(135deg, #0099ff 0%, #0064e0 100%);
+    background: var(--brand-gradient, linear-gradient(135deg, #0099ff 0%, #0064e0 100%));
     border-radius: 8px;
     display: flex;
     align-items: center;
@@ -234,15 +267,8 @@ async function handleLogout() {
 }
 
 .role-admin {
-    color: #0099ff;
+    color: var(--brand-primary, #0099ff);
     font-weight: 600;
-}
-
-.user-email-display {
-    font-size: 0.875rem;
-    font-weight: 500;
-    color: #1f2937;
-    margin-right: 0.5rem;
 }
 
 .app-body {
@@ -271,6 +297,7 @@ async function handleLogout() {
     color: #4b5563;
     text-decoration: none;
     transition: all 0.2s;
+    width: 100%;
 }
 
 .nav-item:hover {
@@ -279,12 +306,41 @@ async function handleLogout() {
 }
 
 .nav-item.active {
-    background: linear-gradient(135deg, #0099ff 0%, #0064e0 100%);
+    background: var(--brand-gradient, linear-gradient(135deg, #0099ff 0%, #0064e0 100%));
     color: white;
 }
 
 .nav-item i {
     font-size: 1.125rem;
+}
+
+/* Settings group */
+.nav-group-toggle {
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-align: left;
+    font-size: 0.9rem;
+}
+
+.nav-group-toggle .toggle-icon {
+    margin-left: auto;
+    font-size: 0.75rem;
+    opacity: 0.6;
+}
+
+.nav-children {
+    border-left: 2px solid #f3f4f6;
+    margin-left: 1.5rem;
+}
+
+.nav-child {
+    padding: 0.6rem 1rem 0.6rem 1.25rem;
+    font-size: 0.875rem;
+}
+
+.nav-child i {
+    font-size: 1rem;
 }
 
 .app-main {

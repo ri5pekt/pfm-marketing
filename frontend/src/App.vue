@@ -12,13 +12,18 @@
 <script setup>
 import { ref, onMounted, watch } from "vue";
 import { useAuthStore } from "@/store/authStore";
+import { useAppSettingsStore } from "@/store/appSettingsStore";
 import ProgressSpinner from "primevue/progressspinner";
 import Toast from "primevue/toast";
 
 const authStore = useAuthStore();
+const appSettingsStore = useAppSettingsStore();
 const appLoading = ref(true);
 
 onMounted(async () => {
+    // Load app settings (title + brand color) — runs regardless of auth state
+    appSettingsStore.init().catch(() => {});
+
     // Validate token on app startup if one exists
     const tokenInStorage = localStorage.getItem("pfm_token");
     if (tokenInStorage && !authStore.user && !authStore.loadingUser) {

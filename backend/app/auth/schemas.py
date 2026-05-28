@@ -23,3 +23,20 @@ class UserMe(BaseModel):
     class Config:
         from_attributes = True
 
+
+class UserRead(BaseModel):
+    id: int
+    email: str
+    is_active: bool
+    is_admin: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class UserCreate(BaseModel):
+    email: EmailStr
+    password: str
+    is_admin: bool = False
+

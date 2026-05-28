@@ -13,7 +13,7 @@
       >
         <template #content>
           <div class="service-content">
-            <div class="service-icon" :style="{ background: service.gradient }">
+            <div class="service-icon" :style="{ background: appSettingsStore.brandGradient }">
               <i :class="service.icon"></i>
             </div>
             <h3>{{ service.title }}</h3>
@@ -30,11 +30,13 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import Card from 'primevue/card'
+import { useAppSettingsStore } from '@/store/appSettingsStore'
 
 const router = useRouter()
+const appSettingsStore = useAppSettingsStore()
 
 const services = ref([
   {
@@ -42,7 +44,6 @@ const services = ref([
     title: 'Meta Campaign Rules',
     description: 'Create and manage automated rules for Meta campaigns with scheduled checks and logs',
     icon: 'pi pi-facebook',
-    gradient: 'linear-gradient(135deg, #0099FF 0%, #0064E0 100%)',
     path: '/meta-campaigns'
   }
 ])
@@ -126,7 +127,7 @@ function navigateToService(path) {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  color: #0099FF;
+  color: var(--brand-primary, #0099FF);
   font-weight: 600;
   font-size: 0.875rem;
   margin-top: 1rem;

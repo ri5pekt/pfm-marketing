@@ -4,7 +4,7 @@
             <Card class="login-card">
                 <template #header>
                     <div class="login-header">
-                        <h1>PFM Marketing</h1>
+                        <h1>{{ appSettingsStore.appTitle }}</h1>
                         <p>Sign in to your account</p>
                     </div>
                 </template>
@@ -64,10 +64,12 @@ import Password from "primevue/password";
 import Button from "primevue/button";
 import Toast from "primevue/toast";
 import { useAuthStore } from "@/store/authStore";
+import { useAppSettingsStore } from "@/store/appSettingsStore";
 
 const router = useRouter();
 const toast = useToast();
 const authStore = useAuthStore();
+const appSettingsStore = useAppSettingsStore();
 
 const email = ref("");
 const password = ref("");
@@ -124,7 +126,7 @@ async function handleLogin() {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(135deg, #0099ff 0%, #0064e0 100%);
+    background: var(--brand-gradient, linear-gradient(135deg, #0099ff 0%, #0064e0 100%));
     padding: 20px;
 }
 
@@ -142,7 +144,7 @@ async function handleLogin() {
 }
 
 .login-header {
-    background: linear-gradient(135deg, #0099ff 0%, #0064e0 100%);
+    background: var(--brand-gradient, linear-gradient(135deg, #0099ff 0%, #0064e0 100%));
     padding: 2rem;
     border-radius: 16px 16px 0 0;
     text-align: center;

@@ -6,6 +6,8 @@ import DashboardView from "@/views/DashboardView.vue";
 import MetaCampaignsView from "@/views/MetaCampaignsView.vue";
 import MetaCampaignsLogsView from "@/views/MetaCampaignsLogsView.vue";
 import RuleEditorView from "@/views/RuleEditorView.vue";
+import SettingsUsersView from "@/views/settings/SettingsUsersView.vue";
+import SettingsMainView from "@/views/settings/SettingsMainView.vue";
 
 const routes = [
     {
@@ -43,6 +45,16 @@ const routes = [
                 path: "/meta-campaigns/rules/:id/edit",
                 name: "rule-edit",
                 component: RuleEditorView,
+            },
+            {
+                path: "/settings/users",
+                name: "settings-users",
+                component: SettingsUsersView,
+            },
+            {
+                path: "/settings",
+                name: "settings",
+                component: SettingsMainView,
             },
         ],
     },
