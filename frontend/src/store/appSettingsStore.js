@@ -1,5 +1,4 @@
-import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { reactive, computed } from 'vue'
 import { getSettings, updateSettings } from '@/api/settingsApi'
 
 const DEFAULT_TITLE = 'PFM Marketing'
@@ -11,6 +10,7 @@ const DEFAULT_COLOR = '#0099ff'
  */
 function darkenHex(hex, amount = 20) {
   const clean = hex.replace('#', '')
+  if (clean.length !== 6) return hex
   const r = parseInt(clean.substring(0, 2), 16) / 255
   const g = parseInt(clean.substring(2, 4), 16) / 255
   const b = parseInt(clean.substring(4, 6), 16) / 255
@@ -33,7 +33,6 @@ function darkenHex(hex, amount = 20) {
 
   l = Math.max(0, l - amount / 100)
 
-  // HSL back to RGB
   function hue2rgb(p, q, t) {
     if (t < 0) t += 1
     if (t > 1) t -= 1
@@ -66,42 +65,52 @@ function applyBrandVars(primaryColor) {
   root.style.setProperty('--brand-gradient-end', endColor)
 }
 
-export const useAppSettingsStore = defineStore('appSettings', () => {
-  const appTitle = ref(DEFAULT_TITLE)
-  const primaryColor = ref(DEFAULT_COLOR)
-  const loading = ref(false)
-  const initialized = ref(false)
+const state = reactive({
+  appTitle: DEFAULT_TITLE,
+  primaryColor: DEFAULT_COLOR,
+  loading: false,
+  initialized: false,
+})
 
+export function useAppSettingsStore() {
   const brandGradient = computed(() => {
-    const end = darkenHex(primaryColor.value, 20)
-    return `linear-gradient(135deg, ${primaryColor.value} 0%, ${end} 100%)`
+    const end = darkenHex(state.primaryColor, 20)
+    return `linear-gradient(135deg, ${state.primaryColor} 0%, ${end} 100%)`
   })
 
   async function init() {
-    if (loading.value) return
-    loading.value = true
+    if (state.loading) return
+    state.loading = true
     try {
       const data = await getSettings()
-      appTitle.value = data.title || DEFAULT_TITLE
-      primaryColor.value = data.primary_color || DEFAULT_COLOR
-      applyBrandVars(primaryColor.value)
-      document.title = appTitle.value
-      initialized.value = true
+      state.appTitle = data.title || DEFAULT_TITLE
+      state.primaryColor = data.primary_color || DEFAULT_COLOR
+      applyBrandVars(state.primaryColor)
+      document.title = state.appTitle
+      state.initialized = true
     } catch (e) {
-      // Fall back to defaults — apply them anyway so CSS vars are set
+      // Fall back to defaults — apply them so CSS vars are always set
       applyBrandVars(DEFAULT_COLOR)
     } finally {
-      loading.value = false
+      state.loading = false
     }
   }
 
   async function save(title, color) {
     const data = await updateSettings({ title, primary_color: color })
-    appTitle.value = data.title
-    primaryColor.value = data.primary_color
+    state.appTitle = data.title
+    state.primaryColor = data.primary_color
     applyBrandVars(data.primary_color)
     document.title = data.title
   }
 
-  return { appTitle, primaryColor, brandGradient, loading, initialized, init, save }
-})
+  return {
+    get appTitle() { return state.appTitle },
+    get primaryColor() { return state.primaryColor },
+    get loading() { return state.loading },
+    get initialized() { return state.initialized },
+    brandGradient,
+    init,
+    save,
+  }
+}
