@@ -195,7 +195,8 @@ def schedule_rule(rule: models.CampaignRule):
             args=[rule.id],
             interval=interval_seconds,
             repeat=None,  # Repeat indefinitely
-            id=f"rule_{rule.id}"
+            id=f"rule_{rule.id}",
+            result_ttl=0,
         )
 
         # Update rule with next run time (stored in UTC)
@@ -316,7 +317,8 @@ def schedule_custom_daily_rule(rule: models.CampaignRule, schedule: dict, timezo
                     args=[rule.id],
                     interval=interval_seconds,
                     repeat=None,  # Repeat indefinitely
-                    id=job_id
+                    id=job_id,
+                    result_ttl=0,
                 )
 
                 job_ids.append(job.id)
