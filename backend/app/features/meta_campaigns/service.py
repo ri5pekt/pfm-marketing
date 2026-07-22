@@ -9,7 +9,12 @@ from typing import Dict, List, Any
 
 # Import from refactored modules
 from app.features.meta_campaigns.facebook_api_client import fetch_facebook_data, fetch_insights, fetch_daily_insights, build_time_range_string, fetch_ads_for_item
-from app.features.meta_campaigns.data_filtering import apply_scope_filters
+from app.features.meta_campaigns.data_filtering import (
+    apply_scope_filters,
+    normalize_keyword_groups,
+    name_matches_all_groups,
+    name_passes_doesnt_contain_groups,
+)
 from app.features.meta_campaigns.condition_evaluator import calculate_metric_from_insights, evaluate_condition
 from app.features.meta_campaigns.action_executor import execute_action, send_slack_notification
 from app.features.meta_campaigns.rate_limit_tracker import check_rate_limit_headers
@@ -528,33 +533,32 @@ def test_rule(db: Session, rule_id: int):
                 # Start with all campaigns
                 matching_campaign_ids = [str(campaign.get("id")) for campaign in all_campaigns]
 
-                # Apply positive filter (contains)
+                # Apply positive filter (contains) — AND across groups, OR within each
                 if has_campaign_name_contains:
-                    keywords_contains = scope_filters["campaign_name_contains"]
-                    if isinstance(keywords_contains, list) and keywords_contains:
+                    groups_contains = normalize_keyword_groups(scope_filters["campaign_name_contains"])
+                    if groups_contains:
                         matching_campaign_ids = [
                             str(campaign.get("id"))
                             for campaign in all_campaigns
-                            if any(keyword.lower() in campaign.get("name", "").lower() for keyword in keywords_contains)
+                            if name_matches_all_groups(campaign.get("name", ""), groups_contains)
                         ]
-                        logger.info(f"After campaign_name_contains: {len(matching_campaign_ids)} campaigns match (keywords: {keywords_contains})")
+                        logger.info(f"After campaign_name_contains: {len(matching_campaign_ids)} campaigns match (groups: {groups_contains})")
 
-                # Apply negative filter (doesn't contain)
+                # Apply negative filter (doesn't contain) — AND across groups
                 if has_campaign_name_doesnt_contain:
-                    keywords_doesnt_contain = scope_filters["campaign_name_doesnt_contain"]
-                    if isinstance(keywords_doesnt_contain, list) and keywords_doesnt_contain:
-                        # Filter OUT campaigns that contain any of these keywords
+                    groups_doesnt_contain = normalize_keyword_groups(scope_filters["campaign_name_doesnt_contain"])
+                    if groups_doesnt_contain:
+                        campaign_name_by_id = {
+                            str(c.get("id")): c.get("name", "") for c in all_campaigns
+                        }
                         matching_campaign_ids = [
                             cid for cid in matching_campaign_ids
-                            if not any(
-                                keyword.lower() in next(
-                                    (c.get("name", "") for c in all_campaigns if str(c.get("id")) == cid),
-                                    ""
-                                ).lower()
-                                for keyword in keywords_doesnt_contain
+                            if name_passes_doesnt_contain_groups(
+                                campaign_name_by_id.get(cid, ""),
+                                groups_doesnt_contain,
                             )
                         ]
-                        logger.info(f"After campaign_name_doesnt_contain: {len(matching_campaign_ids)} campaigns remain (excluded keywords: {keywords_doesnt_contain})")
+                        logger.info(f"After campaign_name_doesnt_contain: {len(matching_campaign_ids)} campaigns remain (excluded groups: {groups_doesnt_contain})")
 
                 step_elapsed = time.time() - step_start_time
                 logger.info(f"[TIMING] Step 0.5 completed in {step_elapsed:.2f} seconds - Resolved to {len(matching_campaign_ids)} campaigns (from {len(all_campaigns)} total)")

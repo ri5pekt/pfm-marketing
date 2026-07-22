@@ -88,6 +88,7 @@ import RuleJsonEditor from "@/components/meta-campaigns/rule-builder/RuleJsonEdi
 import AddScopeDialog from "@/components/meta-campaigns/rule-builder/AddScopeDialog.vue";
 import { buildCronExpression } from "@/utils/cronHelpers";
 import { scopeTypeOptions } from "@/utils/specialValues";
+import { MULTI_ALLOWED_SCOPE_TYPES } from "@/utils/scopeFilters";
 import { useRuleForm } from "@/composables/useRuleForm";
 import { useRuleJsonConverter } from "@/composables/useRuleJsonConverter";
 import { useRuleSchedule } from "@/composables/useRuleSchedule";
@@ -137,7 +138,10 @@ const availableScopeTypes = computed(() => {
             (opt) => opt.value !== "campaign_name_contains" && opt.value !== "campaign_ids",
         );
     }
-    return filteredOptions.filter((opt) => !addedTypes.includes(opt.value));
+    // Keyword scopes may be added multiple times (AND across instances)
+    return filteredOptions.filter(
+        (opt) => MULTI_ALLOWED_SCOPE_TYPES.has(opt.value) || !addedTypes.includes(opt.value),
+    );
 });
 
 // Update page header
@@ -240,15 +244,16 @@ function onRuleLevelChange() {
 function addScopeFilter(scopeType) {
     if (!scopeType) return;
 
+    const chipTypes = [
+        "name_contains",
+        "ids",
+        "campaign_name_contains",
+        "campaign_name_doesnt_contain",
+        "campaign_ids",
+    ];
     const newScope = {
         type: scopeType,
-        value:
-            scopeType === "name_contains" ||
-            scopeType === "ids" ||
-            scopeType === "campaign_name_contains" ||
-            scopeType === "campaign_ids"
-                ? []
-                : "",
+        value: chipTypes.includes(scopeType) ? [] : "",
     };
     ruleForm.value.scopeFilters.push(newScope);
     showAddScopeDialog.value = false;

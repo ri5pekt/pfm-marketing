@@ -1,6 +1,10 @@
 import { ref } from "vue";
 import { buildCronExpression, parseCronExpression } from "@/utils/cronHelpers";
 import { isSpecialValue } from "@/utils/specialValues";
+import {
+    appendKeywordScopesFromConditions,
+    collectKeywordScopeValue,
+} from "@/utils/scopeFilters";
 
 // Helper to parse IDs from textarea (comma or newline separated) or return array as-is
 function parseIds(text) {
@@ -26,17 +30,24 @@ export function useRuleJsonConverter(ruleForm, formErrors, scheduleFormErrors) {
     function ruleFormToJSON() {
         // Build scope filters object
         const scopeObject = {};
+
+        const nameContains = collectKeywordScopeValue(ruleForm.value.scopeFilters, "name_contains");
+        if (nameContains) scopeObject.name_contains = nameContains;
+
+        const campaignNameContains = collectKeywordScopeValue(
+            ruleForm.value.scopeFilters,
+            "campaign_name_contains",
+        );
+        if (campaignNameContains) scopeObject.campaign_name_contains = campaignNameContains;
+
+        const campaignNameDoesntContain = collectKeywordScopeValue(
+            ruleForm.value.scopeFilters,
+            "campaign_name_doesnt_contain",
+        );
+        if (campaignNameDoesntContain) scopeObject.campaign_name_doesnt_contain = campaignNameDoesntContain;
+
         ruleForm.value.scopeFilters.forEach((scope) => {
-            if (scope.type === "name_contains") {
-                if (Array.isArray(scope.value) && scope.value.length > 0) {
-                    const filtered = scope.value.filter((v) => v && v.trim().length > 0);
-                    if (filtered.length > 0) {
-                        scopeObject.name_contains = filtered;
-                    }
-                } else if (typeof scope.value === "string" && scope.value.trim().length > 0) {
-                    scopeObject.name_contains = [scope.value.trim()];
-                }
-            } else if (scope.type === "ids") {
+            if (scope.type === "ids") {
                 if (Array.isArray(scope.value) && scope.value.length > 0) {
                     const filtered = scope.value.filter((v) => v && v.trim().length > 0);
                     if (filtered.length > 0) {
@@ -47,24 +58,6 @@ export function useRuleJsonConverter(ruleForm, formErrors, scheduleFormErrors) {
                     if (ids.length > 0) {
                         scopeObject.ids = ids;
                     }
-                }
-            } else if (scope.type === "campaign_name_contains") {
-                if (Array.isArray(scope.value) && scope.value.length > 0) {
-                    const filtered = scope.value.filter((v) => v && v.trim().length > 0);
-                    if (filtered.length > 0) {
-                        scopeObject.campaign_name_contains = filtered;
-                    }
-                } else if (typeof scope.value === "string" && scope.value.trim().length > 0) {
-                    scopeObject.campaign_name_contains = [scope.value.trim()];
-                }
-            } else if (scope.type === "campaign_name_doesnt_contain") {
-                if (Array.isArray(scope.value) && scope.value.length > 0) {
-                    const filtered = scope.value.filter((v) => v && v.trim().length > 0);
-                    if (filtered.length > 0) {
-                        scopeObject.campaign_name_doesnt_contain = filtered;
-                    }
-                } else if (typeof scope.value === "string" && scope.value.trim().length > 0) {
-                    scopeObject.campaign_name_doesnt_contain = [scope.value.trim()];
                 }
             } else if (scope.type === "campaign_ids") {
                 if (Array.isArray(scope.value) && scope.value.length > 0) {
@@ -219,13 +212,7 @@ export function useRuleJsonConverter(ruleForm, formErrors, scheduleFormErrors) {
 
         // Parse scope filters
         const scopeFilters = [];
-        if (conditions.name_contains) {
-            if (Array.isArray(conditions.name_contains) && conditions.name_contains.length > 0) {
-                scopeFilters.push({ type: "name_contains", value: conditions.name_contains });
-            } else if (typeof conditions.name_contains === "string" && conditions.name_contains.trim().length > 0) {
-                scopeFilters.push({ type: "name_contains", value: [conditions.name_contains.trim()] });
-            }
-        }
+        appendKeywordScopesFromConditions(scopeFilters, conditions);
         if (conditions.ids) {
             if (Array.isArray(conditions.ids) && conditions.ids.length > 0) {
                 scopeFilters.push({ type: "ids", value: conditions.ids });
@@ -234,38 +221,6 @@ export function useRuleJsonConverter(ruleForm, formErrors, scheduleFormErrors) {
                 if (ids.length > 0) {
                     scopeFilters.push({ type: "ids", value: ids });
                 }
-            }
-        }
-        if (conditions.campaign_name_contains) {
-            if (Array.isArray(conditions.campaign_name_contains) && conditions.campaign_name_contains.length > 0) {
-                scopeFilters.push({ type: "campaign_name_contains", value: conditions.campaign_name_contains });
-            } else if (
-                typeof conditions.campaign_name_contains === "string" &&
-                conditions.campaign_name_contains.trim().length > 0
-            ) {
-                scopeFilters.push({
-                    type: "campaign_name_contains",
-                    value: [conditions.campaign_name_contains.trim()],
-                });
-            }
-        }
-        if (conditions.campaign_name_doesnt_contain) {
-            if (
-                Array.isArray(conditions.campaign_name_doesnt_contain) &&
-                conditions.campaign_name_doesnt_contain.length > 0
-            ) {
-                scopeFilters.push({
-                    type: "campaign_name_doesnt_contain",
-                    value: conditions.campaign_name_doesnt_contain,
-                });
-            } else if (
-                typeof conditions.campaign_name_doesnt_contain === "string" &&
-                conditions.campaign_name_doesnt_contain.trim().length > 0
-            ) {
-                scopeFilters.push({
-                    type: "campaign_name_doesnt_contain",
-                    value: [conditions.campaign_name_doesnt_contain.trim()],
-                });
             }
         }
         if (conditions.campaign_ids) {

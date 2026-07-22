@@ -10,6 +10,54 @@ from app.features.meta_campaigns.facebook_api_client import READ_DELAY
 logger = logging.getLogger(__name__)
 
 
+def normalize_keyword_groups(value: Any) -> List[List[str]]:
+    """Normalize keyword filter values into AND-groups of OR-keywords.
+
+    Backward compatible:
+    - Flat list ["a", "b"]  -> [["a", "b"]]  (one group, keywords OR)
+    - Nested  [["a"], ["b"]] -> [["a"], ["b"]]  (groups AND; keywords OR within each)
+    - String  "a"           -> [["a"]]
+    """
+    if not value:
+        return []
+    if isinstance(value, str):
+        text = value.strip()
+        return [[text]] if text else []
+    if not isinstance(value, list) or not value:
+        return []
+
+    # Nested groups: first element is a list/tuple
+    if isinstance(value[0], (list, tuple)):
+        groups: List[List[str]] = []
+        for group in value:
+            if isinstance(group, (list, tuple)):
+                keywords = [str(k).strip() for k in group if k is not None and str(k).strip()]
+                if keywords:
+                    groups.append(keywords)
+            elif group is not None and str(group).strip():
+                groups.append([str(group).strip()])
+        return groups
+
+    # Flat list of strings = single OR group (existing rules)
+    keywords = [str(k).strip() for k in value if k is not None and str(k).strip()]
+    return [keywords] if keywords else []
+
+
+def name_matches_all_groups(name: str, groups: List[List[str]]) -> bool:
+    """True if name matches every group (AND). Within a group, any keyword matches (OR)."""
+    name_l = (name or "").lower()
+    return all(any(keyword.lower() in name_l for keyword in group) for group in groups)
+
+
+def name_passes_doesnt_contain_groups(name: str, groups: List[List[str]]) -> bool:
+    """True if name passes every doesn't-contain group (AND).
+
+    A group passes when the name contains none of that group's keywords.
+    """
+    name_l = (name or "").lower()
+    return all(not any(keyword.lower() in name_l for keyword in group) for group in groups)
+
+
 def apply_scope_filters(data: List[Dict], scope_filters: Dict[str, Any], rule_level: str = "ad", account_id: str = None, access_token: str = None) -> List[Dict]:
     """Apply scope filters to the data
 
@@ -24,11 +72,11 @@ def apply_scope_filters(data: List[Dict], scope_filters: Dict[str, Any], rule_le
 
     # Name contains filter (for ad/adset level - filters by item name)
     if "name_contains" in scope_filters and scope_filters["name_contains"]:
-        keywords = scope_filters["name_contains"]
-        if isinstance(keywords, list):
+        groups = normalize_keyword_groups(scope_filters["name_contains"])
+        if groups:
             filtered_data = [
                 item for item in filtered_data
-                if any(keyword.lower() in item.get("name", "").lower() for keyword in keywords)
+                if name_matches_all_groups(item.get("name", ""), groups)
             ]
 
     # IDs filter (for ad/adset level - filters by item id)
@@ -49,14 +97,14 @@ def apply_scope_filters(data: List[Dict], scope_filters: Dict[str, Any], rule_le
 
     # Campaign Name contains filter
     if "campaign_name_contains" in scope_filters and scope_filters["campaign_name_contains"]:
-        keywords = scope_filters["campaign_name_contains"]
-        if isinstance(keywords, list) and keywords:
+        groups = normalize_keyword_groups(scope_filters["campaign_name_contains"])
+        if groups:
             if rule_level == "campaign":
                 # For campaign level, filter by campaign name directly
                 logger.info(f"Applying campaign_name_contains filter at campaign level: {len(filtered_data)} items before filter")
                 filtered_data = [
                     item for item in filtered_data
-                    if any(keyword.lower() in item.get("name", "").lower() for keyword in keywords)
+                    if name_matches_all_groups(item.get("name", ""), groups)
                 ]
                 logger.info(f"After campaign_name_contains filter: {len(filtered_data)} items remaining")
                 if filtered_data:
@@ -67,7 +115,7 @@ def apply_scope_filters(data: List[Dict], scope_filters: Dict[str, Any], rule_le
                 if account_id and access_token:
                     try:
                         filter_start_time = time.time()
-                        logger.info(f"Fetching campaigns for campaign_name_contains filter (keywords: {keywords})...")
+                        logger.info(f"Fetching campaigns for campaign_name_contains filter (groups: {groups})...")
                         # Fetch campaigns and filter by name with pagination
                         base_url = "https://graph.facebook.com/v21.0"
                         if not account_id.startswith("act_"):
@@ -159,13 +207,13 @@ def apply_scope_filters(data: List[Dict], scope_filters: Dict[str, Any], rule_le
                         logger.info(f"[TIMING] Campaign fetch for campaign_name_contains filter took {filter_elapsed:.2f} seconds")
                         logger.info(f"Fetched all campaigns: {len(all_campaigns)} total across {page_count} page(s)")
 
-                        # Filter campaigns by name keywords
+                        # Filter campaigns by name keyword groups (AND across groups)
                         matching_campaign_ids = [
                             str(campaign.get("id"))
                             for campaign in all_campaigns
-                            if any(keyword.lower() in campaign.get("name", "").lower() for keyword in keywords)
+                            if name_matches_all_groups(campaign.get("name", ""), groups)
                         ]
-                        logger.info(f"Found {len(matching_campaign_ids)} campaigns matching campaign_name_contains (keywords: {keywords})")
+                        logger.info(f"Found {len(matching_campaign_ids)} campaigns matching campaign_name_contains (groups: {groups})")
                         if matching_campaign_ids:
                             logger.debug(f"Matching campaign IDs: {matching_campaign_ids[:10]}")  # Log first 10
 
@@ -190,22 +238,22 @@ def apply_scope_filters(data: List[Dict], scope_filters: Dict[str, Any], rule_le
 
     # Campaign Name doesn't contain filter
     if "campaign_name_doesnt_contain" in scope_filters and scope_filters["campaign_name_doesnt_contain"]:
-        keywords = scope_filters["campaign_name_doesnt_contain"]
-        if isinstance(keywords, list) and keywords:
+        groups = normalize_keyword_groups(scope_filters["campaign_name_doesnt_contain"])
+        if groups:
             if rule_level == "campaign":
-                # For campaign level, filter OUT campaigns that contain any keyword
+                # For campaign level, filter OUT campaigns that fail any doesn't-contain group
                 logger.info(f"Applying campaign_name_doesnt_contain filter at campaign level: {len(filtered_data)} items before filter")
                 filtered_data = [
                     item for item in filtered_data
-                    if not any(keyword.lower() in item.get("name", "").lower() for keyword in keywords)
+                    if name_passes_doesnt_contain_groups(item.get("name", ""), groups)
                 ]
-                logger.info(f"After campaign_name_doesnt_contain filter: {len(filtered_data)} items remaining (excluded keywords: {keywords})")
+                logger.info(f"After campaign_name_doesnt_contain filter: {len(filtered_data)} items remaining (excluded groups: {groups})")
             else:
                 # For ad/adset level, fetch campaigns, then filter OUT by campaign_id
                 if account_id and access_token:
                     try:
                         filter_start_time = time.time()
-                        logger.info(f"Fetching campaigns for campaign_name_doesnt_contain filter (keywords to exclude: {keywords})...")
+                        logger.info(f"Fetching campaigns for campaign_name_doesnt_contain filter (groups to exclude: {groups})...")
 
                         # Fetch campaigns
                         base_url = "https://graph.facebook.com/v21.0"
@@ -257,13 +305,13 @@ def apply_scope_filters(data: List[Dict], scope_filters: Dict[str, Any], rule_le
                         filter_elapsed = time.time() - filter_start_time
                         logger.info(f"[TIMING] Campaign fetch for campaign_name_doesnt_contain filter took {filter_elapsed:.2f} seconds")
 
-                        # Filter OUT campaigns that contain any of the keywords
+                        # Keep campaigns that pass all doesn't-contain groups; exclude the rest
                         excluded_campaign_ids = [
                             str(campaign.get("id"))
                             for campaign in all_campaigns
-                            if any(keyword.lower() in campaign.get("name", "").lower() for keyword in keywords)
+                            if not name_passes_doesnt_contain_groups(campaign.get("name", ""), groups)
                         ]
-                        logger.info(f"Found {len(excluded_campaign_ids)} campaigns to EXCLUDE (contain keywords: {keywords})")
+                        logger.info(f"Found {len(excluded_campaign_ids)} campaigns to EXCLUDE (groups: {groups})")
 
                         # Filter ads/adsets to exclude items from excluded campaigns
                         logger.info(f"Filtering {rule_level} items by campaign_id: {len(filtered_data)} items before filter")

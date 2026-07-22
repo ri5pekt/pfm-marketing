@@ -1,6 +1,7 @@
 import { ref } from "vue";
 import { parseCronExpression } from "@/utils/cronHelpers";
 import { isSpecialValue } from "@/utils/specialValues";
+import { appendKeywordScopesFromConditions } from "@/utils/scopeFilters";
 
 // Helper to parse IDs from textarea (comma or newline separated) or return array as-is
 function parseIds(text) {
@@ -106,13 +107,7 @@ export function useRuleForm() {
 
         // Parse scope filters
         const scopeFilters = [];
-        if (conditions.name_contains) {
-            if (Array.isArray(conditions.name_contains) && conditions.name_contains.length > 0) {
-                scopeFilters.push({ type: "name_contains", value: conditions.name_contains });
-            } else if (typeof conditions.name_contains === "string" && conditions.name_contains.trim().length > 0) {
-                scopeFilters.push({ type: "name_contains", value: [conditions.name_contains.trim()] });
-            }
-        }
+        appendKeywordScopesFromConditions(scopeFilters, conditions);
         if (conditions.ids) {
             if (Array.isArray(conditions.ids) && conditions.ids.length > 0) {
                 scopeFilters.push({ type: "ids", value: conditions.ids });
@@ -121,38 +116,6 @@ export function useRuleForm() {
                 if (ids.length > 0) {
                     scopeFilters.push({ type: "ids", value: ids });
                 }
-            }
-        }
-        if (conditions.campaign_name_contains) {
-            if (Array.isArray(conditions.campaign_name_contains) && conditions.campaign_name_contains.length > 0) {
-                scopeFilters.push({ type: "campaign_name_contains", value: conditions.campaign_name_contains });
-            } else if (
-                typeof conditions.campaign_name_contains === "string" &&
-                conditions.campaign_name_contains.trim().length > 0
-            ) {
-                scopeFilters.push({
-                    type: "campaign_name_contains",
-                    value: [conditions.campaign_name_contains.trim()],
-                });
-            }
-        }
-        if (conditions.campaign_name_doesnt_contain) {
-            if (
-                Array.isArray(conditions.campaign_name_doesnt_contain) &&
-                conditions.campaign_name_doesnt_contain.length > 0
-            ) {
-                scopeFilters.push({
-                    type: "campaign_name_doesnt_contain",
-                    value: conditions.campaign_name_doesnt_contain,
-                });
-            } else if (
-                typeof conditions.campaign_name_doesnt_contain === "string" &&
-                conditions.campaign_name_doesnt_contain.trim().length > 0
-            ) {
-                scopeFilters.push({
-                    type: "campaign_name_doesnt_contain",
-                    value: [conditions.campaign_name_doesnt_contain.trim()],
-                });
             }
         }
         if (conditions.campaign_ids) {

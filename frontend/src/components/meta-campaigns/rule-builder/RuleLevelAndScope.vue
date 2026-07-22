@@ -25,6 +25,7 @@
         <!-- 2B: Scope Filters -->
         <div class="subsection">
             <h4 class="subsection-title">2B. Scope Filters</h4>
+            <p class="scope-and-hint">Multiple scopes are combined with AND. Keywords inside one scope use OR.</p>
             <div v-if="modelValue.scopeFilters.length === 0" class="empty-scope">
                 <p>No scope filters defined.</p>
             </div>
@@ -379,6 +380,12 @@ function onRuleLevelChange() {
     color: #6b7280;
     text-align: center;
     margin-bottom: 1rem;
+}
+
+.scope-and-hint {
+    margin: 0 0 1rem;
+    font-size: 0.875rem;
+    color: #6b7280;
 }
 
 .scope-filters-list {
