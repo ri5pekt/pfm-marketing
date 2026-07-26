@@ -1,6 +1,7 @@
 from app.features.meta_campaigns import service
 from app.core.db import SessionLocal
 from app.jobs.queues import get_queue
+from app.features.meta_campaigns.schedule_calculations import calculate_next_custom_daily_run
 from datetime import datetime
 from croniter import croniter
 import logging
@@ -73,58 +74,13 @@ def check_campaign_rule(rule_id: int):
                             logger.warning(f"Invalid timezone {timezone}, using UTC: {str(e)}")
                             tz = ZoneInfo("UTC")
 
-                        # Get current time in the schedule's timezone
-                        now_tz = datetime.now(tz)
-                        next_runs = []
-
-                        for day_str, time_config in schedule.items():
-                            try:
-                                day = int(day_str)
-                                
-                                # Determine if this is a simple time string or interval config
-                                if isinstance(time_config, str):
-                                    # Format 1: Simple string "HH:MM" - run once
-                                    hour, minute = map(int, time_config.split(":"))
-                                elif isinstance(time_config, dict):
-                                    # Format 2: Interval config with start_time and interval_minutes
-                                    # For next run calculation, we use the start_time
-                                    # The scheduler creates separate jobs for each interval time
-                                    start_time = time_config.get("start_time", "00:00")
-                                    hour, minute = map(int, start_time.split(":"))
-                                else:
-                                    logger.error(f"Invalid time_config format for rule {rule_id}, day {day}: {time_config}")
-                                    continue
-
-                                # Create a cron expression for this specific day and time
-                                # Cron format: minute hour * * dayOfWeek
-                                cron_expr = f"{minute} {hour} * * {day}"
-
-                                # Calculate next run time in the schedule's timezone
-                                # croniter works with naive datetime, so we convert to naive first
-                                now_naive = now_tz.replace(tzinfo=None)
-                                cron = croniter(cron_expr, now_naive)
-                                next_run_naive = cron.get_next(datetime)
-
-                                # Localize to the schedule's timezone, then convert to UTC for storage
-                                # pytz uses localize(), zoneinfo uses replace()
-                                if hasattr(tz, 'localize'):
-                                    # pytz timezone
-                                    next_run_tz = tz.localize(next_run_naive)
-                                else:
-                                    # zoneinfo timezone
-                                    next_run_tz = next_run_naive.replace(tzinfo=tz)
-
-                                # Convert to UTC for storage
-                                utc_tz = ZoneInfo("UTC")
-                                next_run_utc = next_run_tz.astimezone(utc_tz)
-
-                                next_runs.append(next_run_utc)
-                            except (ValueError, KeyError) as e:
-                                logger.warning(f"Error parsing day/time for next run calculation: day={day_str}, time_config={time_config}, error={str(e)}")
-                                continue
-
-                        if next_runs:
-                            rule.next_run_at = min(next_runs)
+                        next_run_utc = calculate_next_custom_daily_run(
+                            schedule,
+                            tz,
+                            datetime.now(tz),
+                        )
+                        if next_run_utc:
+                            rule.next_run_at = next_run_utc
                             logger.info(f"Rule {rule_id} next run scheduled for {rule.next_run_at} UTC (custom daily, timezone: {timezone})")
                         else:
                             logger.warning(f"Could not calculate next run time for custom daily rule {rule_id}")

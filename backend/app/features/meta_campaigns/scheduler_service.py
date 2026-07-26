@@ -4,6 +4,7 @@ from croniter import croniter
 from app.core.config import settings
 from app.jobs.queues import redis_conn
 from app.features.meta_campaigns import models, worker
+from app.features.meta_campaigns.schedule_calculations import generate_interval_times
 from app.core.db import SessionLocal
 import logging
 import json
@@ -22,40 +23,6 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 scheduler = Scheduler(connection=redis_conn)
-
-
-def generate_interval_times(start_time: str, interval_minutes: int, end_time: str = "23:59") -> list:
-    """
-    Generate all execution times for a given interval within a day.
-    
-    Args:
-        start_time: Starting time in HH:MM format (e.g., "00:00")
-        interval_minutes: Interval in minutes (e.g., 15, 30, 60)
-        end_time: Ending time in HH:MM format (e.g., "23:59")
-    
-    Returns:
-        List of time strings in HH:MM format
-    
-    Example:
-        generate_interval_times("00:00", 15) -> ["00:00", "00:15", "00:30", ..., "23:45"]
-    """
-    start_hour, start_minute = map(int, start_time.split(":"))
-    end_hour, end_minute = map(int, end_time.split(":"))
-    
-    # Convert to minutes from midnight
-    start_minutes = start_hour * 60 + start_minute
-    end_minutes = end_hour * 60 + end_minute
-    
-    times = []
-    current_minutes = start_minutes
-    
-    while current_minutes <= end_minutes:
-        hour = current_minutes // 60
-        minute = current_minutes % 60
-        times.append(f"{hour:02d}:{minute:02d}")
-        current_minutes += interval_minutes
-    
-    return times
 
 
 def cron_to_interval_seconds(cron_expr: str) -> int:

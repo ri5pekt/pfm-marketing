@@ -6,7 +6,11 @@ Run with: pytest tests/test_schedule_intervals.py
 """
 
 import json
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 from app.features.meta_campaigns.scheduler_service import generate_interval_times
+from app.features.meta_campaigns.schedule_calculations import calculate_next_custom_daily_run
 
 
 def test_generate_interval_times_15_minutes():
@@ -17,6 +21,38 @@ def test_generate_interval_times_15_minutes():
     assert times[1] == "00:15"
     assert times[2] == "00:30"
     assert times[-1] == "23:45"
+
+
+def test_next_custom_daily_run_advances_to_next_interval_slot():
+    """A Monday interval rule must advance within Monday, not jump a week."""
+    tz = ZoneInfo("America/New_York")
+    schedule = {
+        "1": {
+            "start_time": "00:01",
+            "interval_minutes": 15,
+        }
+    }
+    now = datetime(2026, 7, 20, 0, 1, 16, tzinfo=tz)  # Monday
+
+    next_run = calculate_next_custom_daily_run(schedule, tz, now)
+
+    assert next_run == datetime(2026, 7, 20, 4, 16, tzinfo=ZoneInfo("UTC"))
+
+
+def test_next_custom_daily_run_rolls_to_next_week_after_last_slot():
+    tz = ZoneInfo("America/New_York")
+    schedule = {
+        "1": {
+            "start_time": "00:01",
+            "end_time": "00:31",
+            "interval_minutes": 15,
+        }
+    }
+    now = datetime(2026, 7, 20, 0, 31, 1, tzinfo=tz)  # Monday
+
+    next_run = calculate_next_custom_daily_run(schedule, tz, now)
+
+    assert next_run == datetime(2026, 7, 27, 4, 1, tzinfo=ZoneInfo("UTC"))
 
 
 def test_generate_interval_times_30_minutes():
