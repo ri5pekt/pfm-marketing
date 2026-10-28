@@ -8,7 +8,7 @@ import json
 from typing import Dict, List, Any
 
 # Import from refactored modules
-from app.features.meta_campaigns.facebook_api_client import fetch_facebook_data, fetch_insights, fetch_daily_insights, build_time_range_string, fetch_ads_for_item
+from app.features.meta_campaigns.facebook_api_client import fetch_facebook_data, fetch_insights, fetch_daily_insights, build_time_range_string, fetch_ads_for_item, meta_get, meta_get_all_pages, chunk_ids, normalize_id_list
 from app.features.meta_campaigns.data_filtering import (
     apply_scope_filters,
     normalize_keyword_groups,
@@ -492,43 +492,29 @@ def test_rule(db: Session, rule_id: int):
                 base_url = "https://graph.facebook.com/v21.0"
                 account_id_formatted = f"act_{account_id}" if not account_id.startswith("act_") else account_id
 
-                # Build filtering for existing campaign_ids if present
-                campaign_filtering = None
+                existing_campaign_ids = None
                 if "campaign_ids" in scope_filters and scope_filters["campaign_ids"]:
                     existing_campaign_ids = scope_filters["campaign_ids"]
                     if isinstance(existing_campaign_ids, str):
                         existing_campaign_ids = [id_val.strip() for id_val in existing_campaign_ids.replace("\n", ",").split(",") if id_val.strip()]
                     if isinstance(existing_campaign_ids, list) and existing_campaign_ids:
-                        campaign_filtering = json.dumps([{
-                            "field": "id",
-                            "operator": "IN",
-                            "value": existing_campaign_ids
-                        }])
                         logger.info(f"Pre-filtering campaigns by existing campaign_ids: {len(existing_campaign_ids)} campaigns")
+                    else:
+                        existing_campaign_ids = None
 
-                all_campaigns = []
                 url = f"{base_url}/{account_id_formatted}/campaigns"
-                params = {
+                base_params = {
                     "fields": "id,name",
                     "limit": 2000,
                     "access_token": access_token
                 }
-                if campaign_filtering:
-                    from urllib.parse import quote
-                    params["filtering"] = quote(campaign_filtering)
-
-                while True:
-                    response = requests.get(url, params=params, timeout=30)
-                    response.raise_for_status()
-                    data = response.json()
-                    all_campaigns.extend(data.get("data", []))
-
-                    next_url = data.get("paging", {}).get("next")
-                    if not next_url:
-                        break
-                    url = next_url
-                    params = {}  # next_url already has all params
-                    time.sleep(0.3)
+                all_campaigns = []
+                if existing_campaign_ids:
+                    for batch in chunk_ids(existing_campaign_ids):
+                        params = dict(base_params, filtering=json.dumps([{"field": "id", "operator": "IN", "value": batch}]))
+                        all_campaigns.extend(meta_get_all_pages(url, params, timeout=30))
+                else:
+                    all_campaigns = meta_get_all_pages(url, base_params, timeout=30)
 
                 # Start with all campaigns
                 matching_campaign_ids = [str(campaign.get("id")) for campaign in all_campaigns]
@@ -613,41 +599,26 @@ def test_rule(db: Session, rule_id: int):
             base_url = "https://graph.facebook.com/v21.0"
             account_id_formatted = f"act_{account_id}" if not account_id.startswith("act_") else account_id
 
-            # Build filtering for campaign status
-            campaign_filtering = json.dumps([{
-                "field": "effective_status",
-                "operator": "IN",
-                "value": [campaign_status_value]
-            }])
-
-            # If campaign_ids already set, filter by those too
-            if "campaign_ids" in scope_filters and scope_filters["campaign_ids"]:
-                existing_campaign_ids = scope_filters["campaign_ids"]
-                campaign_filtering = json.dumps([
-                    {"field": "effective_status", "operator": "IN", "value": [campaign_status_value]},
-                    {"field": "id", "operator": "IN", "value": existing_campaign_ids}
-                ])
-
-            all_campaigns = []
+            status_filter = {"field": "effective_status", "operator": "IN", "value": [campaign_status_value]}
             url = f"{base_url}/{account_id_formatted}/campaigns"
-            params = {
+            base_params = {
                 "fields": "id",
-                "filtering": campaign_filtering,
                 "limit": 2000,
                 "access_token": access_token
             }
 
-            while True:
-                response = requests.get(url, params=params, timeout=30)
-                response.raise_for_status()
-                data = response.json()
-                all_campaigns.extend(data.get("data", []))
-                next_url = data.get("paging", {}).get("next")
-                if not next_url:
-                    break
-                url = next_url
-                params = {}
-                time.sleep(0.3)
+            all_campaigns = []
+            existing_campaign_ids = normalize_id_list(scope_filters.get("campaign_ids"))
+            if existing_campaign_ids:
+                for batch in chunk_ids(existing_campaign_ids):
+                    params = dict(base_params, filtering=json.dumps([
+                        status_filter,
+                        {"field": "id", "operator": "IN", "value": batch},
+                    ]))
+                    all_campaigns.extend(meta_get_all_pages(url, params, timeout=30))
+            else:
+                params = dict(base_params, filtering=json.dumps([status_filter]))
+                all_campaigns = meta_get_all_pages(url, params, timeout=30)
 
             matching_campaign_ids = [str(c.get("id")) for c in all_campaigns]
             step_elapsed = time.time() - step_start_time
@@ -679,41 +650,26 @@ def test_rule(db: Session, rule_id: int):
             base_url = "https://graph.facebook.com/v21.0"
             account_id_formatted = f"act_{account_id}" if not account_id.startswith("act_") else account_id
 
-            # Build filtering for adset status
-            adset_filtering = json.dumps([{
-                "field": "effective_status",
-                "operator": "IN",
-                "value": [adset_status_value]
-            }])
-
-            # If campaign_ids already set, filter by those too
-            if "campaign_ids" in scope_filters and scope_filters["campaign_ids"]:
-                existing_campaign_ids = scope_filters["campaign_ids"]
-                adset_filtering = json.dumps([
-                    {"field": "effective_status", "operator": "IN", "value": [adset_status_value]},
-                    {"field": "campaign.id", "operator": "IN", "value": existing_campaign_ids}
-                ])
-
-            all_adsets = []
+            status_filter = {"field": "effective_status", "operator": "IN", "value": [adset_status_value]}
             url = f"{base_url}/{account_id_formatted}/adsets"
-            params = {
+            base_params = {
                 "fields": "id,campaign_id",
-                "filtering": adset_filtering,
                 "limit": 2000,
                 "access_token": access_token
             }
 
-            while True:
-                response = requests.get(url, params=params, timeout=30)
-                response.raise_for_status()
-                data = response.json()
-                all_adsets.extend(data.get("data", []))
-                next_url = data.get("paging", {}).get("next")
-                if not next_url:
-                    break
-                url = next_url
-                params = {}
-                time.sleep(0.3)
+            all_adsets = []
+            existing_campaign_ids = normalize_id_list(scope_filters.get("campaign_ids"))
+            if existing_campaign_ids:
+                for batch in chunk_ids(existing_campaign_ids):
+                    params = dict(base_params, filtering=json.dumps([
+                        status_filter,
+                        {"field": "campaign.id", "operator": "IN", "value": batch},
+                    ]))
+                    all_adsets.extend(meta_get_all_pages(url, params, timeout=30))
+            else:
+                params = dict(base_params, filtering=json.dumps([status_filter]))
+                all_adsets = meta_get_all_pages(url, params, timeout=30)
 
             matching_adset_ids = [str(a.get("id")) for a in all_adsets]
             step_elapsed = time.time() - step_start_time
@@ -883,31 +839,19 @@ def test_rule(db: Session, rule_id: int):
                     else:
                         account_id_formatted = account_id
 
-                    # Fetch campaigns in batches using filtering (Facebook API supports up to 50 IDs per filter)
-                    batch_size = 50
-                    campaign_ids_list = list(campaign_ids)
-                    for i in range(0, len(campaign_ids_list), batch_size):
-                        batch_ids = campaign_ids_list[i:i + batch_size]
-                        # Build filtering JSON string for campaign IDs
-                        filtering = f"[{{\"field\":\"campaign.id\",\"operator\":\"IN\",\"value\":[{','.join([f'\"{id_val}\"' for id_val in batch_ids])}]}}]"
-
-                        url = f"{base_url}/{account_id_formatted}/campaigns"
+                    url = f"{base_url}/{account_id_formatted}/campaigns"
+                    for batch_ids in chunk_ids(campaign_ids):
                         params = {
                             "fields": "id,status,effective_status",
-                            "filtering": filtering,
-                            "limit": batch_size,
+                            "filtering": json.dumps([{"field": "campaign.id", "operator": "IN", "value": batch_ids}]),
+                            "limit": len(batch_ids),
                             "access_token": access_token
                         }
-                        response = requests.get(url, params=params, timeout=30)
-                        if response.status_code == 200:
-                            data = response.json()
-                            campaigns_data = data.get("data", [])
-                            for campaign in campaigns_data:
-                                campaign_id = str(campaign.get("id"))
-                                status = campaign.get("status") or campaign.get("effective_status")
-                                campaign_status_cache[campaign_id] = status
-                        else:
-                            logger.warning(f"Error fetching campaign statuses: {response.status_code} - {response.text}")
+                        data = meta_get(url, params=params, timeout=30)
+                        for campaign in data.get("data", []):
+                            campaign_id = str(campaign.get("id"))
+                            status = campaign.get("status") or campaign.get("effective_status")
+                            campaign_status_cache[campaign_id] = status
                 except Exception as e:
                     logger.warning(f"Error fetching campaign statuses: {str(e)}")
                     # Continue without campaign status cache - conditions will fail gracefully
@@ -930,31 +874,19 @@ def test_rule(db: Session, rule_id: int):
                     else:
                         account_id_formatted = account_id
 
-                    # Fetch ad sets in batches using filtering (Facebook API supports up to 50 IDs per filter)
-                    batch_size = 50
-                    adset_ids_list = list(adset_ids)
-                    for i in range(0, len(adset_ids_list), batch_size):
-                        batch_ids = adset_ids_list[i:i + batch_size]
-                        # Build filtering JSON string for ad set IDs
-                        filtering = f"[{{\"field\":\"adset.id\",\"operator\":\"IN\",\"value\":[{','.join([f'\"{id_val}\"' for id_val in batch_ids])}]}}]"
-
-                        url = f"{base_url}/{account_id_formatted}/adsets"
+                    url = f"{base_url}/{account_id_formatted}/adsets"
+                    for batch_ids in chunk_ids(adset_ids):
                         params = {
                             "fields": "id,status,effective_status",
-                            "filtering": filtering,
-                            "limit": batch_size,
+                            "filtering": json.dumps([{"field": "adset.id", "operator": "IN", "value": batch_ids}]),
+                            "limit": len(batch_ids),
                             "access_token": access_token
                         }
-                        response = requests.get(url, params=params, timeout=30)
-                        if response.status_code == 200:
-                            data = response.json()
-                            adsets_data = data.get("data", [])
-                            for adset in adsets_data:
-                                adset_id = str(adset.get("id"))
-                                status = adset.get("status") or adset.get("effective_status")
-                                adset_status_cache[adset_id] = status
-                        else:
-                            logger.warning(f"Error fetching ad set statuses: {response.status_code} - {response.text}")
+                        data = meta_get(url, params=params, timeout=30)
+                        for adset in data.get("data", []):
+                            adset_id = str(adset.get("id"))
+                            status = adset.get("status") or adset.get("effective_status")
+                            adset_status_cache[adset_id] = status
                 except Exception as e:
                     logger.warning(f"Error fetching ad set statuses: {str(e)}")
                     # Continue without ad set status cache - conditions will fail gracefully

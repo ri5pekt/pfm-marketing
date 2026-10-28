@@ -127,18 +127,109 @@ def retry_on_timeout(func: Callable, *args, max_retries: int = MAX_RETRIES, retr
     raise last_exception
 
 
-def parse_meta_error(response):
-    """Return (error_code, error_message) from a Meta Graph API response, or (None, "")."""
+def _meta_error_dict(response) -> dict:
     if response is None:
-        return None, ""
+        return {}
     try:
         data = response.json()
     except (ValueError, json.JSONDecodeError):
-        return None, ""
+        return {}
     error = data.get("error") if isinstance(data, dict) else None
-    if not isinstance(error, dict):
-        return None, ""
+    return error if isinstance(error, dict) else {}
+
+
+def parse_meta_error(response):
+    """Return (error_code, error_message) from a Meta Graph API response, or (None, "")."""
+    error = _meta_error_dict(response)
     return error.get("code"), error.get("message") or ""
+
+
+META_RATE_LIMIT_CODES = {4, 17, 32, 613} | set(range(80000, 80015))
+
+
+class MetaAPIError(Exception):
+    """Meta Graph API error with the code/message from the response body (never includes the URL or token)."""
+
+    def __init__(self, code, subcode, message, status_code=None):
+        self.code = code
+        self.subcode = subcode
+        self.status_code = status_code
+        super().__init__(f"Meta API error code={code} subcode={subcode}: {message}")
+
+
+def is_read_rate_limited(response) -> bool:
+    error = _meta_error_dict(response)
+    if error.get("code") in META_RATE_LIMIT_CODES:
+        return True
+    msg = (error.get("message") or "").lower()
+    return "rate limit" in msg or "request limit" in msg or "too many" in msg
+
+
+ID_FILTER_CHUNK_SIZE = 50
+
+
+def normalize_id_list(value) -> List[str]:
+    """Normalize an ID scope value (list or comma/newline string) to a list of strings."""
+    if not value:
+        return []
+    if isinstance(value, str):
+        return [v.strip() for v in value.replace("\n", ",").split(",") if v.strip()]
+    return [str(v).strip() for v in value if str(v).strip()]
+
+
+def chunk_ids(ids, size: int = ID_FILTER_CHUNK_SIZE):
+    """Split an ID list into chunks small enough for a Meta IN filter."""
+    ids = list(ids)
+    return [ids[i:i + size] for i in range(0, len(ids), size)]
+
+
+def meta_get(
+    url: str,
+    params: dict = None,
+    timeout: int = FETCH_TIMEOUT,
+    rate_limit_max_retries: int = RATE_LIMIT_MAX_RETRIES,
+    rate_limit_retry_delay: int = RATE_LIMIT_RETRY_DELAY,
+):
+    """
+    GET a Meta Graph API URL and return the parsed JSON.
+
+    Retries timeouts and rate-limit responses with backoff. Raises MetaAPIError
+    with Meta's error code/message on failure.
+    """
+    rate_limit_attempts = 0
+    while True:
+        response = retry_on_timeout(requests.get, url, params=params, timeout=timeout)
+        if response.ok:
+            return safe_json_parse(response)
+
+        if is_read_rate_limited(response) and rate_limit_attempts < rate_limit_max_retries:
+            rate_limit_attempts += 1
+            code, message = parse_meta_error(response)
+            logger.warning(
+                f"[RATE LIMIT RETRY] Meta read rate limited (code={code}, "
+                f"attempt {rate_limit_attempts}/{rate_limit_max_retries}). "
+                f"Waiting {rate_limit_retry_delay}s before retry. Message: {message}"
+            )
+            time.sleep(rate_limit_retry_delay)
+            continue
+
+        error = _meta_error_dict(response)
+        message = error.get("message") or f"HTTP {response.status_code}"
+        raise MetaAPIError(error.get("code"), error.get("error_subcode"), message, response.status_code)
+
+
+def meta_get_all_pages(url: str, params: dict = None, timeout: int = FETCH_TIMEOUT, page_delay: float = 0.3) -> list:
+    """Follow paging.next and return all rows from a Meta Graph API list endpoint."""
+    rows = []
+    while True:
+        data = meta_get(url, params=params, timeout=timeout)
+        rows.extend(data.get("data", []))
+        next_url = data.get("paging", {}).get("next")
+        if not next_url:
+            return rows
+        url = next_url
+        params = None
+        time.sleep(page_delay)
 
 
 def is_write_rate_limited(response) -> bool:
@@ -284,6 +375,27 @@ def fetch_facebook_data(
     Returns:
         List of all items (campaigns, ad sets, or ads)
     """
+    for id_key in ("campaign_ids", "adset_ids"):
+        if id_key == "adset_ids" and rule_level != "ad":
+            continue
+        ids = normalize_id_list(scope_filters.get(id_key)) if scope_filters else []
+        if len(ids) > ID_FILTER_CHUNK_SIZE:
+            logger.info(f"[FETCH] Splitting {len(ids)} {id_key} into chunks of {ID_FILTER_CHUNK_SIZE}")
+            merged = {}
+            for batch in chunk_ids(ids):
+                items = fetch_facebook_data(
+                    account_id,
+                    access_token,
+                    rule_level,
+                    limit=limit,
+                    scope_filters={**scope_filters, id_key: batch},
+                    effective_status_in=effective_status_in,
+                    api_call_counter=api_call_counter,
+                )
+                for item in items:
+                    merged.setdefault(str(item.get("id")), item)
+            return list(merged.values())
+
     base_url = "https://graph.facebook.com/v21.0"
 
     # Ensure account_id has 'act_' prefix
