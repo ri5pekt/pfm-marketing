@@ -3,7 +3,7 @@ import logging
 import time
 from typing import Dict, List
 from app.features.meta_campaigns.rate_limit_tracker import check_rate_limit_headers
-from app.features.meta_campaigns.facebook_api_client import WRITE_DELAY, FETCH_TIMEOUT, retry_on_timeout
+from app.features.meta_campaigns.facebook_api_client import WRITE_DELAY, FETCH_TIMEOUT, retry_on_timeout, retry_meta_write
 
 logger = logging.getLogger(__name__)
 
@@ -145,7 +145,7 @@ def execute_action(account_id: str, access_token: str, rule_level: str, items: L
                     "access_token": access_token
                 }
                 start_time = time.time()
-                response = retry_on_timeout(requests.post, url, params=params, timeout=FETCH_TIMEOUT)
+                response = retry_meta_write(requests.post, url, params=params, timeout=FETCH_TIMEOUT)
                 elapsed = time.time() - start_time
                 logger.info(f"[API TIMING] Set status action completed in {elapsed:.2f}s")
 
@@ -210,7 +210,7 @@ def execute_action(account_id: str, access_token: str, rule_level: str, items: L
                                     "access_token": access_token
                                 }
                                 start_time = time.time()
-                                response = retry_on_timeout(requests.post, url, params=params, timeout=FETCH_TIMEOUT)
+                                response = retry_meta_write(requests.post, url, params=params, timeout=FETCH_TIMEOUT)
                                 elapsed = time.time() - start_time
                                 logger.info(f"[API TIMING] Budget increase action completed in {elapsed:.2f}s")
 
@@ -243,7 +243,7 @@ def execute_action(account_id: str, access_token: str, rule_level: str, items: L
                                     "access_token": access_token
                                 }
                                 start_time = time.time()
-                                response = retry_on_timeout(requests.post, url, params=params, timeout=FETCH_TIMEOUT)
+                                response = retry_meta_write(requests.post, url, params=params, timeout=FETCH_TIMEOUT)
                                 elapsed = time.time() - start_time
                                 logger.info(f"[API TIMING] Budget decrease action completed in {elapsed:.2f}s")
 
@@ -289,7 +289,7 @@ def execute_action(account_id: str, access_token: str, rule_level: str, items: L
                             "access_token": access_token
                         }
                         start_time = time.time()
-                        response = retry_on_timeout(requests.post, url, params=params, timeout=FETCH_TIMEOUT)
+                        response = retry_meta_write(requests.post, url, params=params, timeout=FETCH_TIMEOUT)
                         elapsed = time.time() - start_time
                         logger.info(f"[API TIMING] Append to name action completed in {elapsed:.2f}s")
 
@@ -330,7 +330,7 @@ def execute_action(account_id: str, access_token: str, rule_level: str, items: L
                             "access_token": access_token
                         }
                         start_time = time.time()
-                        response = retry_on_timeout(requests.post, url, params=params, timeout=FETCH_TIMEOUT)
+                        response = retry_meta_write(requests.post, url, params=params, timeout=FETCH_TIMEOUT)
                         elapsed = time.time() - start_time
                         logger.info(f"[API TIMING] Remove from name action completed in {elapsed:.2f}s")
 

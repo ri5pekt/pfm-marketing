@@ -23,6 +23,10 @@ INSIGHTS_TIMEOUT = 90  # Timeout for insights API calls (increased from 60s)
 MAX_RETRIES = 2  # Maximum number of retries for failed requests
 RETRY_DELAY = 5  # Delay between retries in seconds
 
+# Write rate-limit retries (Meta #613 is 1 concurrent write / 30s)
+RATE_LIMIT_MAX_RETRIES = 2
+RATE_LIMIT_RETRY_DELAY = 30
+
 
 def safe_json_parse(response):
     """
@@ -121,6 +125,104 @@ def retry_on_timeout(func: Callable, *args, max_retries: int = MAX_RETRIES, retr
     
     # Should not reach here, but just in case
     raise last_exception
+
+
+def parse_meta_error(response):
+    """Return (error_code, error_message) from a Meta Graph API response, or (None, "")."""
+    if response is None:
+        return None, ""
+    try:
+        data = response.json()
+    except (ValueError, json.JSONDecodeError):
+        return None, ""
+    error = data.get("error") if isinstance(data, dict) else None
+    if not isinstance(error, dict):
+        return None, ""
+    return error.get("code"), error.get("message") or ""
+
+
+def is_write_rate_limited(response) -> bool:
+    """True when Meta rejected a write for concurrent/rate limiting (notably #613)."""
+    code, message = parse_meta_error(response)
+    msg = (message or "").lower()
+    if code == 613:
+        return True
+    if "rate limit" in msg or "too many" in msg or "concurrent request" in msg:
+        return True
+    return False
+
+
+def retry_meta_write(
+    func: Callable,
+    *args,
+    max_retries: int = MAX_RETRIES,
+    retry_delay: int = RETRY_DELAY,
+    rate_limit_max_retries: int = RATE_LIMIT_MAX_RETRIES,
+    rate_limit_retry_delay: int = RATE_LIMIT_RETRY_DELAY,
+    **kwargs,
+):
+    """
+    Call a Meta write request.
+
+    Retries timeouts with the short delay, and Meta write rate limits (#613 /
+    concurrent request limit) with a 30s backoff. Returns the last response so
+    callers can still raise_for_status() when retries are exhausted.
+    """
+    timeout_attempts = 0
+    rate_limit_attempts = 0
+
+    while True:
+        start_time = time.time()
+        try:
+            response = func(*args, **kwargs)
+            elapsed = time.time() - start_time
+
+            if is_write_rate_limited(response):
+                code, message = parse_meta_error(response)
+                if rate_limit_attempts < rate_limit_max_retries:
+                    rate_limit_attempts += 1
+                    logger.warning(
+                        f"[RATE LIMIT RETRY] Meta write rate limited (code={code}, "
+                        f"attempt {rate_limit_attempts}/{rate_limit_max_retries}). "
+                        f"Waiting {rate_limit_retry_delay}s before retry. Message: {message}"
+                    )
+                    time.sleep(rate_limit_retry_delay)
+                    continue
+                logger.error(
+                    f"[RATE LIMIT FAILED] Meta write still rate limited after {rate_limit_max_retries} "
+                    f"retries (code={code}). Message: {message}"
+                )
+                return response
+
+            if timeout_attempts > 0 or rate_limit_attempts > 0:
+                logger.info(
+                    f"[RETRY SUCCESS] Meta write succeeded in {elapsed:.2f}s "
+                    f"(timeout retries={timeout_attempts}, rate-limit retries={rate_limit_attempts})"
+                )
+            else:
+                logger.debug(f"[API TIMING] Request completed in {elapsed:.2f}s")
+            return response
+
+        except requests.exceptions.Timeout as e:
+            elapsed = time.time() - start_time
+            if timeout_attempts < max_retries:
+                timeout_attempts += 1
+                logger.warning(
+                    f"[RETRY] Meta write timed out after {elapsed:.2f}s "
+                    f"(attempt {timeout_attempts}/{max_retries}). Retrying in {retry_delay}s..."
+                )
+                time.sleep(retry_delay)
+                continue
+            logger.error(
+                f"[RETRY FAILED] Meta write timed out after {elapsed:.2f}s. "
+                f"All {max_retries + 1} attempts failed."
+            )
+            raise e
+
+        except Exception as e:
+            elapsed = time.time() - start_time
+            logger.error(f"[API ERROR] Meta write failed after {elapsed:.2f}s: {str(e)}")
+            raise
 
 
 def _safe_float_any(value, default=0.0) -> float:
